@@ -58,7 +58,7 @@ The delivery system follows several key design patterns:
 
 ### File Structure
 
-\`\`\`
+```plaintext
 lib/delivery/
 ├── types.ts                 # Type definitions and interfaces
 ├── base-agency.ts          # Abstract base class for agencies
@@ -78,7 +78,7 @@ app/api/delivery/
 │       └── route.ts       # Tracking endpoints
 └── sync/
     └── route.ts           # Synchronization endpoints
-\`\`\`
+```
 
 ---
 
@@ -87,7 +87,8 @@ app/api/delivery/
 ### Core Tables
 
 #### delivery_agencies
-\`\`\`sql
+
+```sql
 CREATE TABLE delivery_agencies (
   id VARCHAR(50) PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
@@ -106,10 +107,11 @@ CREATE TABLE delivery_agencies (
   INDEX idx_enabled (enabled),
   INDEX idx_updated_at (updated_at)
 );
-\`\`\`
+```
 
 #### delivery_shipments
-\`\`\`sql
+
+```sql
 CREATE TABLE delivery_shipments (
   id VARCHAR(50) PRIMARY KEY,
   order_id VARCHAR(50) NOT NULL,
@@ -131,10 +133,11 @@ CREATE TABLE delivery_shipments (
   INDEX idx_status (status),
   INDEX idx_last_status_update (last_status_update)
 );
-\`\`\`
+```
 
 #### delivery_status_logs
-\`\`\`sql
+
+```sql
 CREATE TABLE delivery_status_logs (
   id VARCHAR(50) PRIMARY KEY,
   shipment_id VARCHAR(50) NOT NULL,
@@ -151,7 +154,7 @@ CREATE TABLE delivery_status_logs (
   INDEX idx_timestamp (timestamp),
   INDEX idx_status (status)
 );
-\`\`\`
+```
 
 ---
 
@@ -160,11 +163,13 @@ CREATE TABLE delivery_status_logs (
 ### Agency Management
 
 #### GET /api/delivery/agencies
-**Purpose**: Retrieve all delivery agencies with their configuration
+
+**Purpose**: Retrieve all delivery agencies with their configuration  
 **Access**: Admin only
 
 **Response**:
-\`\`\`json
+
+```json
 {
   "success": true,
   "agencies": [
@@ -182,14 +187,16 @@ CREATE TABLE delivery_status_logs (
     }
   ]
 }
-\`\`\`
+```
 
 #### PUT /api/delivery/agencies/:id
-**Purpose**: Update agency configuration and credentials
+
+**Purpose**: Update agency configuration and credentials  
 **Access**: Admin only
 
 **Request Body**:
-\`\`\`json
+
+```json
 {
   "enabled": true,
   "credentialsUsername": "your_username",
@@ -199,24 +206,27 @@ CREATE TABLE delivery_status_logs (
     "pollingInterval": 300
   }
 }
-\`\`\`
+```
 
 ### Shipment Operations
 
 #### POST /api/delivery/shipments
-**Purpose**: Create a new shipment for an order
+
+**Purpose**: Create a new shipment for an order  
 **Access**: Authenticated users
 
 **Request Body**:
-\`\`\`json
+
+```json
 {
   "orderId": "order-123",
   "agencyId": "best-delivery"
 }
-\`\`\`
+```
 
 **Response**:
-\`\`\`json
+
+```json
 {
   "success": true,
   "shipment": {
@@ -227,10 +237,11 @@ CREATE TABLE delivery_status_logs (
     "printUrl": "https://api.bestdelivery.com/print/123456789"
   }
 }
-\`\`\`
+```
 
 #### GET /api/delivery/shipments
-**Purpose**: Retrieve shipments with optional filtering
+
+**Purpose**: Retrieve shipments with optional filtering  
 **Access**: Authenticated users
 
 **Query Parameters**:
@@ -242,11 +253,13 @@ CREATE TABLE delivery_status_logs (
 ### Tracking
 
 #### GET /api/delivery/track/:trackingNumber
-**Purpose**: Get detailed tracking information for a shipment
+
+**Purpose**: Get detailed tracking information for a shipment  
 **Access**: Authenticated users
 
 **Response**:
-\`\`\`json
+
+```json
 {
   "success": true,
   "tracking": {
@@ -267,16 +280,18 @@ CREATE TABLE delivery_status_logs (
     ]
   }
 }
-\`\`\`
+```
 
 ### Synchronization
 
 #### POST /api/delivery/sync
-**Purpose**: Manual sync trigger and sync status
+
+**Purpose**: Manual sync trigger and sync status  
 **Access**: Admin only
 
 **Response**:
-\`\`\`json
+
+```json
 {
   "success": true,
   "syncResults": {
@@ -286,7 +301,7 @@ CREATE TABLE delivery_status_logs (
     "duration": 1500
   }
 }
-\`\`\`
+```
 
 ---
 
@@ -295,6 +310,7 @@ CREATE TABLE delivery_status_logs (
 ### For End Users
 
 #### Creating a Shipment
+
 1. Navigate to an order in the CRM
 2. Open the order sidebar
 3. Select a delivery agency from the dropdown
@@ -302,6 +318,7 @@ CREATE TABLE delivery_status_logs (
 5. Tracking number and print URL are displayed immediately
 
 #### Tracking Orders
+
 - View tracking information directly in the order sidebar
 - Real-time status updates are synchronized automatically
 - Complete delivery history is maintained
@@ -309,12 +326,14 @@ CREATE TABLE delivery_status_logs (
 ### For Administrators
 
 #### Configuring Agencies
+
 1. Navigate to **Dashboard → Delivery Management**
 2. Configure agency credentials and settings
 3. Test connections to ensure proper setup
 4. Enable/disable agencies as needed
 
 #### Managing Shipments
+
 - View all shipments in the delivery management interface
 - Monitor sync status and performance
 - Access comprehensive delivery analytics
@@ -324,7 +343,8 @@ CREATE TABLE delivery_status_logs (
 ## Configuration
 
 ### Environment Variables
-\`\`\`env
+
+```env
 # Best Delivery Configuration
 BEST_DELIVERY_USERNAME=your_username
 BEST_DELIVERY_PASSWORD=your_password
@@ -334,10 +354,11 @@ BEST_DELIVERY_ENDPOINT=https://api.bestdelivery.com/soap
 DELIVERY_SYNC_INTERVAL=300000
 DELIVERY_MAX_RETRIES=3
 DELIVERY_TIMEOUT=30000
-\`\`\`
+```
 
 ### Agency Configuration Format
-\`\`\`typescript
+
+```typescript
 {
   name: "Best Delivery",
   code: "BEST",
@@ -361,7 +382,7 @@ DELIVERY_TIMEOUT=30000
     ]
   }
 }
-\`\`\`
+```
 
 ---
 
@@ -370,10 +391,12 @@ DELIVERY_TIMEOUT=30000
 ### SOAP Operations Implemented
 
 #### CreatePickup
+
 Creates new shipments with pickup requests.
 
 **Request Structure**:
-\`\`\`xml
+
+```xml
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <CreatePickup>
@@ -387,13 +410,15 @@ Creates new shipments with pickup requests.
     </CreatePickup>
   </soap:Body>
 </soap:Envelope>
-\`\`\`
+```
 
 #### TrackShipmentStatus
+
 Gets current status of shipments.
 
 **Request Structure**:
-\`\`\`xml
+
+```xml
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <TrackShipmentStatus>
@@ -403,12 +428,14 @@ Gets current status of shipments.
     </TrackShipmentStatus>
   </soap:Body>
 </soap:Envelope>
-\`\`\`
+```
 
 #### TrackShipment
+
 Gets detailed tracking information.
 
 ### Status Mapping
+
 | Best Delivery Status | System Status | Description |
 |---------------------|---------------|-------------|
 | PENDING | pending | Shipment created, awaiting pickup |
@@ -422,6 +449,7 @@ Gets detailed tracking information.
 | CANCELLED | cancelled | Shipment cancelled |
 
 ### Error Handling
+
 - **Authentication Errors**: Invalid credentials handling
 - **Network Timeouts**: Retry mechanism with exponential backoff
 - **Invalid Data**: Comprehensive validation before API calls
@@ -432,7 +460,8 @@ Gets detailed tracking information.
 ## Adding New Delivery Agencies
 
 ### Step 1: Create Agency Implementation
-\`\`\`typescript
+
+```typescript
 // lib/delivery/agencies/new-agency.ts
 import { BaseDeliveryAgency } from '../base-agency';
 import { DeliveryOrder, DeliveryOrderResponse, DeliveryStatus } from '../types';
@@ -540,10 +569,11 @@ export class NewAgencyDelivery extends BaseDeliveryAgency {
     return response.json();
   }
 }
-\`\`\`
+```
 
 ### Step 2: Register Agency
-\`\`\`typescript
+
+```typescript
 // lib/delivery/agency-registry.ts
 import { NewAgencyDelivery } from './agencies/new-agency';
 
@@ -559,10 +589,11 @@ export class DeliveryAgencyRegistry {
     this.register('new-agency', NewAgencyDelivery);
   }
 }
-\`\`\`
+```
 
 ### Step 3: Add Database Configuration
-\`\`\`sql
+
+```sql
 -- Add new agency to database
 INSERT INTO delivery_agencies (
   id, name, enabled, credentials_type, settings, polling_interval
@@ -578,10 +609,11 @@ INSERT INTO delivery_agencies (
   ),
   300
 );
-\`\`\`
+```
 
 ### Step 4: Add Translations
-\`\`\`typescript
+
+```typescript
 // lib/translations.ts
 export const translations = {
   en: {
@@ -597,7 +629,7 @@ export const translations = {
     'delivery.status.new_agency.in_progress': 'En Cours',
   }
 };
-\`\`\`
+```
 
 ---
 
@@ -607,7 +639,7 @@ export const translations = {
 
 The sync service runs automatically to update shipment statuses:
 
-\`\`\`typescript
+```typescript
 // lib/delivery/sync-service.ts
 export class DeliverySyncService {
   private isRunning = false;
@@ -677,12 +709,13 @@ export class DeliverySyncService {
     }
   }
 }
-\`\`\`
+```
 
 ### Manual Sync
+
 Available through admin interface for immediate synchronization:
 
-\`\`\`typescript
+```typescript
 // app/api/delivery/sync/route.ts
 export async function POST(request: NextRequest) {
   try {
@@ -714,7 +747,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Sync failed' }, { status: 500 });
   }
 }
-\`\`\`
+```
 
 ---
 
@@ -723,38 +756,41 @@ export async function POST(request: NextRequest) {
 ### Common Error Scenarios
 
 #### 1. Invalid Credentials
-\`\`\`typescript
+
+```typescript
 class AuthenticationError extends Error {
   constructor(agency: string) {
     super(`Authentication failed for ${agency}. Please check credentials.`);
     this.name = 'AuthenticationError';
   }
 }
-\`\`\`
+```
 
 #### 2. Network Issues
-\`\`\`typescript
+
+```typescript
 class NetworkError extends Error {
   constructor(agency: string, originalError: Error) {
     super(`Network error connecting to ${agency}: ${originalError.message}`);
     this.name = 'NetworkError';
   }
 }
-\`\`\`
+```
 
 #### 3. Invalid Orders
-\`\`\`typescript
+
+```typescript
 class ValidationError extends Error {
   constructor(field: string, value: any) {
     super(`Invalid ${field}: ${value}`);
     this.name = 'ValidationError';
   }
 }
-\`\`\`
+```
 
 ### Error Recovery Strategy
 
-\`\`\`typescript
+```typescript
 export class ErrorRecoveryService {
   private maxRetries = 3;
   private baseDelay = 1000; // 1 second
@@ -786,20 +822,22 @@ export class ErrorRecoveryService {
     throw lastError!;
   }
 }
-\`\`\`
+```
 
 ---
 
 ## Security Considerations
 
 ### Access Control
+
 - Agency configuration restricted to admin users
 - Shipment creation requires authentication
 - Tracking information protected by user context
 - API endpoints secured with proper authorization
 
 ### Data Protection
-\`\`\`typescript
+
+```typescript
 // Encrypt sensitive credentials
 export class CredentialManager {
   private static encrypt(data: string): string {
@@ -830,12 +868,13 @@ export class CredentialManager {
     });
   }
 }
-\`\`\`
+```
 
 ### Audit Logging
+
 All delivery operations are logged for security and compliance:
 
-\`\`\`typescript
+```typescript
 await logSystemActivity(
   'DELIVERY_SHIPMENT_CREATED',
   `Shipment created for order ${orderId} via ${agencyId}`,
@@ -848,7 +887,7 @@ await logSystemActivity(
     ipAddress: request.headers.get('x-forwarded-for')
   }
 );
-\`\`\`
+```
 
 ---
 
@@ -856,7 +895,7 @@ await logSystemActivity(
 
 ### Caching Strategy
 
-\`\`\`typescript
+```typescript
 export class DeliveryCache {
   private cache = new Map<string, { data: any; expiry: number }>();
   private defaultTTL = 5 * 60 * 1000; // 5 minutes
@@ -899,11 +938,11 @@ export class DeliveryCache {
     this.set(cacheKey, status, 5 * 60 * 1000); // 5 minutes
   }
 }
-\`\`\`
+```
 
 ### Database Optimization
 
-\`\`\`sql
+```sql
 -- Optimize queries with proper indexing
 CREATE INDEX idx_delivery_shipments_status_agency ON delivery_shipments(status, agency_id);
 CREATE INDEX idx_delivery_shipments_last_update ON delivery_shipments(last_status_update);
@@ -916,11 +955,11 @@ PARTITION BY RANGE (YEAR(created_at)) (
   PARTITION p2025 VALUES LESS THAN (2026),
   PARTITION p_future VALUES LESS THAN MAXVALUE
 );
-\`\`\`
+```
 
 ### Batch Operations
 
-\`\`\`typescript
+```typescript
 export class BatchProcessor {
   async processBatch<T>(
     items: T[],
@@ -943,7 +982,7 @@ export class BatchProcessor {
     }
   }
 }
-\`\`\`
+```
 
 ---
 
@@ -951,7 +990,7 @@ export class BatchProcessor {
 
 ### Key Metrics Tracked
 
-\`\`\`typescript
+```typescript
 export interface DeliveryMetrics {
   totalShipments: number;
   activeShipments: number;
@@ -970,11 +1009,11 @@ export interface DeliveryMetrics {
     syncErrors: number;
   };
 }
-\`\`\`
+```
 
 ### Analytics Dashboard
 
-\`\`\`typescript
+```typescript
 // app/api/analytics/delivery/route.ts
 export async function GET(request: NextRequest) {
   try {
@@ -1009,11 +1048,11 @@ async function generateDeliveryMetrics(): Promise<DeliveryMetrics> {
     byStatus: stats.byStatus
   };
 }
-\`\`\`
+```
 
 ### Performance Monitoring
 
-\`\`\`typescript
+```typescript
 export class PerformanceMonitor {
   private metrics = new Map<string, number[]>();
 
@@ -1062,7 +1101,7 @@ export class PerformanceMonitor {
     }
   }
 }
-\`\`\`
+```
 
 ---
 
@@ -1075,6 +1114,7 @@ export class PerformanceMonitor {
 **Symptoms**: Orders not creating shipments when agency is selected
 
 **Diagnosis Steps**:
+
 1. Check agency credentials in admin panel
 2. Verify order has all required fields (customer name, phone, address)
 3. Check API connectivity and logs
@@ -1082,7 +1122,8 @@ export class PerformanceMonitor {
 5. Review error logs in browser console and server logs
 
 **Solutions**:
-\`\`\`bash
+
+```bash
 # Check agency status
 curl -X GET "https://your-crm-domain.com/api/delivery/agencies" \
   -H "Authorization: Bearer your-token"
@@ -1091,13 +1132,14 @@ curl -X GET "https://your-crm-domain.com/api/delivery/agencies" \
 curl -X POST "https://your-crm-domain.com/api/delivery/test" \
   -H "Content-Type: application/json" \
   -d '{"agencyId": "best-delivery"}'
-\`\`\`
+```
 
 #### Tracking Not Updating
 
 **Symptoms**: Shipment status remains unchanged despite time passing
 
 **Diagnosis Steps**:
+
 1. Verify sync service is running
 2. Check agency API status and connectivity
 3. Review sync logs for errors
@@ -1105,7 +1147,8 @@ curl -X POST "https://your-crm-domain.com/api/delivery/test" \
 5. Verify tracking number format
 
 **Solutions**:
-\`\`\`typescript
+
+```typescript
 // Manual sync for specific shipment
 const syncService = new DeliverySyncService();
 await syncService.syncShipment('shipment-id');
@@ -1113,13 +1156,14 @@ await syncService.syncShipment('shipment-id');
 // Check sync service status
 const status = await syncService.getStatus();
 console.log('Sync service status:', status);
-\`\`\`
+```
 
 #### Performance Issues
 
 **Symptoms**: Slow shipment creation or tracking updates
 
 **Diagnosis Steps**:
+
 1. Check database query performance
 2. Review sync interval settings
 3. Monitor API response times
@@ -1127,7 +1171,8 @@ console.log('Sync service status:', status);
 5. Check server resource usage
 
 **Solutions**:
-\`\`\`sql
+
+```sql
 -- Optimize database queries
 EXPLAIN SELECT * FROM delivery_shipments 
 WHERE status IN ('pending', 'in_transit') 
@@ -1135,20 +1180,22 @@ AND last_status_update < DATE_SUB(NOW(), INTERVAL 1 HOUR);
 
 -- Add missing indexes
 CREATE INDEX idx_shipments_status_update ON delivery_shipments(status, last_status_update);
-\`\`\`
+```
 
 #### Authentication Errors
 
 **Symptoms**: "Authentication failed" errors in logs
 
 **Diagnosis Steps**:
+
 1. Verify credentials are correct
 2. Check if credentials are encrypted properly
 3. Test credentials directly with agency API
 4. Verify credential format matches agency requirements
 
 **Solutions**:
-\`\`\`typescript
+
+```typescript
 // Test credentials
 const testAuth = async (agencyId: string) => {
   const agency = registry.getAgency(agencyId);
@@ -1161,20 +1208,21 @@ const testAuth = async (agencyId: string) => {
     console.error('❌ Authentication failed:', error);
   }
 };
-\`\`\`
+```
 
 ### Debug Mode
 
 Enable detailed logging by setting environment variables:
 
-\`\`\`env
+```env
 DEBUG_DELIVERY=true
 DEBUG_DELIVERY_API=true
 DEBUG_DELIVERY_SYNC=true
-\`\`\`
+```
 
 **Debug Output Example**:
-\`\`\`
+
+```plaintext
 🔍 [DELIVERY] Creating shipment for order: order-123
 🔍 [DELIVERY] Agency: best-delivery
 🔍 [DELIVERY] Order data: {"customerName":"John Doe","customerPhone":"+216..."}
@@ -1182,13 +1230,13 @@ DEBUG_DELIVERY_SYNC=true
 🔍 [DELIVERY_API] Request XML: <soap:Envelope>...</soap:Envelope>
 🔍 [DELIVERY_API] Response received: {"trackingNumber":"BD123456789"}
 ✅ [DELIVERY] Shipment created successfully: shipment-456
-\`\`\`
+```
 
 ### Testing Endpoints
 
 Create test endpoints for debugging:
 
-\`\`\`typescript
+```typescript
 // app/api/test/delivery/route.ts
 export async function POST(request: NextRequest) {
   if (process.env.NODE_ENV === 'production') {
@@ -1220,11 +1268,11 @@ export async function POST(request: NextRequest) {
     }, { status: 500 });
   }
 }
-\`\`\`
+```
 
 ### Log Analysis
 
-\`\`\`bash
+```bash
 # Filter delivery-related logs
 grep "DELIVERY" /var/log/crm/application.log | tail -100
 
@@ -1233,7 +1281,7 @@ tail -f /var/log/crm/application.log | grep "DELIVERY"
 
 # Check for errors in the last hour
 grep "ERROR.*DELIVERY" /var/log/crm/application.log | grep "$(date -d '1 hour ago' '+%Y-%m-%d %H')"
-\`\`\`
+```
 
 ---
 
@@ -1242,9 +1290,10 @@ grep "ERROR.*DELIVERY" /var/log/crm/application.log | grep "$(date -d '1 hour ag
 ### Planned Features
 
 #### Multi-package Shipments
+
 Support for orders with multiple packages:
 
-\`\`\`typescript
+```typescript
 interface MultiPackageOrder extends DeliveryOrder {
   packages: Array<{
     id: string;
@@ -1257,12 +1306,13 @@ interface MultiPackageOrder extends DeliveryOrder {
     };
   }>;
 }
-\`\`\`
+```
 
 #### Delivery Scheduling
+
 Advanced pickup and delivery scheduling:
 
-\`\`\`typescript
+```typescript
 interface DeliverySchedule {
   pickupDate: Date;
   pickupTimeSlot: {
@@ -1276,12 +1326,13 @@ interface DeliverySchedule {
   };
   specialInstructions?: string;
 }
-\`\`\`
+```
 
 #### Cost Calculation
+
 Real-time shipping cost estimation:
 
-\`\`\`typescript
+```typescript
 interface ShippingCost {
   baseCost: number;
   weightCost: number;
@@ -1294,36 +1345,39 @@ interface ShippingCost {
     max: number; // hours
   };
 }
-\`\`\`
+```
 
 #### Label Printing
+
 Direct integration with label printers:
 
-\`\`\`typescript
+```typescript
 interface LabelPrintOptions {
   format: 'PDF' | 'ZPL' | 'EPL';
   size: 'A4' | '4x6' | '4x8';
   copies: number;
   printer?: string; // Printer name/IP
 }
-\`\`\`
+```
 
 #### SMS Notifications
+
 Customer notifications via SMS:
 
-\`\`\`typescript
+```typescript
 interface SMSNotification {
   phoneNumber: string;
   message: string;
   template: 'shipment_created' | 'out_for_delivery' | 'delivered';
   variables: Record<string, string>;
 }
-\`\`\`
+```
 
 #### Webhook Support
+
 Real-time status updates via webhooks:
 
-\`\`\`typescript
+```typescript
 interface WebhookConfig {
   url: string;
   secret: string;
@@ -1333,41 +1387,45 @@ interface WebhookConfig {
     backoffMultiplier: number;
   };
 }
-\`\`\`
+```
 
 ### Additional Agencies
 
 #### DHL Express
-\`\`\`typescript
+
+```typescript
 export class DHLExpressDelivery extends BaseDeliveryAgency {
   protected agencyName = 'DHL Express';
   protected agencyCode = 'DHL_EXPRESS';
   
   // Implementation for DHL Express API
 }
-\`\`\`
+```
 
 #### FedEx
-\`\`\`typescript
+
+```typescript
 export class FedExDelivery extends BaseDeliveryAgency {
   protected agencyName = 'FedEx';
   protected agencyCode = 'FEDEX';
   
   // Implementation for FedEx API
 }
-\`\`\`
+```
 
 #### UPS
-\`\`\`typescript
+
+```typescript
 export class UPSDelivery extends BaseDeliveryAgency {
   protected agencyName = 'UPS';
   protected agencyCode = 'UPS';
   
   // Implementation for UPS API
 }
-\`\`\`
+```
 
 #### Local Courier Services
+
 Framework for integrating local courier services with standardized APIs.
 
 ---
@@ -1375,36 +1433,39 @@ Framework for integrating local courier services with standardized APIs.
 ## Support
 
 ### Documentation
+
 - **API Documentation**: Available in code comments and OpenAPI specification
 - **Type Definitions**: Comprehensive TypeScript interfaces for all data structures
 - **Error Codes**: Documented error codes and their meanings in base agency class
 
 ### Logging
+
 - **Operation Logging**: All delivery operations logged with appropriate levels
 - **Activity Integration**: Complete integration with CRM activity logging system
 - **Performance Metrics**: Response times and success rates logged for monitoring
 
 ### Testing
+
 - **Unit Tests**: Core functionality covered by comprehensive unit tests
 - **Integration Tests**: End-to-end testing for agency implementations
 - **Mock Services**: Development and testing mock services for all agencies
 
 ### Contact Information
+
 - **Technical Support**: delivery-support@your-company.com
 - **Integration Issues**: integrations@your-company.com
 - **Emergency Support**: +1-555-DELIVERY (24/7)
 
 ### Resources
+
 - [Best Delivery API Documentation](https://docs.bestdelivery.com)
 - [Delivery Status Codes Reference](https://docs.your-crm.com/delivery-status-codes)
 - [Integration Examples Repository](https://github.com/your-company/crm-delivery-examples)
 
 ---
 
-**Last Updated**: January 2025  
+**Last Updated**: August 2025  
 **Version**: 1.0.0  
 **Maintainer**: CRM Development Team  
 **License**: Proprietary - Internal Use Only
-\`\`\`
-
-Now let me check and complete any missing API endpoints or components. Let me add the missing delivery management page:
+```

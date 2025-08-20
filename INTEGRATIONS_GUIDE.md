@@ -51,7 +51,7 @@ This integration allows automatic synchronization of orders from Google Sheets (
 
 2. **Replace the default code** with the following script:
 
-\`\`\`javascript
+```javascript
 // CRM Integration Configuration
 const CRM_CONFIG = {
   baseUrl: 'https://your-crm-domain.com', // Replace with your CRM URL
@@ -249,7 +249,6 @@ function setupTriggers() {
   triggers.forEach(trigger => ScriptApp.deleteTrigger(trigger));
   
   // Create new triggers
-  
   // 1. Time-based trigger (every 5 minutes)
   ScriptApp.newTrigger('syncOrdersToCRM')
     .timeBased()
@@ -351,7 +350,7 @@ function testConfiguration() {
     console.error('❌ Test failed:', result.error);
   }
 }
-\`\`\`
+```
 
 ### Step 3: Configure the Script
 
@@ -378,7 +377,7 @@ function testConfiguration() {
 
 1. **Add a test row** to your Google Sheet
 2. **Wait 5 minutes** or run `syncOrdersToCRM()` manually
-3. **Check your CRM** to verify the order was created
+3. **Check your ministres** to verify the order was created
 4. **Verify the status** in the Google Sheet shows "SYNCED"
 
 ---
@@ -392,7 +391,7 @@ This integration connects your Shopify store directly to the CRM using webhooks 
 ### Prerequisites
 
 - Shopify store with admin access
-- CRM system with webhook support
+- CRM рішення with webhook support
 - Basic understanding of webhooks and APIs
 
 ### Method 1: Webhook Integration (Recommended)
@@ -401,36 +400,36 @@ This integration connects your Shopify store directly to the CRM using webhooks 
 
 First, create a webhook endpoint in your CRM to receive Shopify orders:
 
-\`\`\`typescript
+```typescript
 // app/api/webhooks/shopify/orders/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import crypto from 'crypto'
-import prisma from '@/lib/prisma'
-import { logSystemActivity } from '@/lib/activity-logger'
+import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
+import prisma from '@/lib/prisma';
+import { logSystemActivity } from '@/lib/activity-logger';
 
-const SHOPIFY_WEBHOOK_SECRET = process.env.SHOPIFY_WEBHOOK_SECRET!
+const SHOPIFY_WEBHOOK_SECRET = process.env.SHOPIFY_WEBHOOK_SECRET!;
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🛍️ Shopify webhook received')
+    console.log('🛍️ Shopify webhook received');
     
     // Verify webhook authenticity
-    const body = await request.text()
-    const hmacHeader = request.headers.get('x-shopify-hmac-sha256')
+    const body = await request.text();
+    const hmacHeader = request.headers.get('x-shopify-hmac-sha256');
     
     if (!verifyShopifyWebhook(body, hmacHeader)) {
-      console.error('❌ Invalid Shopify webhook signature')
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      console.error('❌ Invalid Shopify webhook signature');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const orderData = JSON.parse(body)
-    console.log('📦 Processing Shopify order:', orderData.order_number)
+    const orderData = JSON.parse(body);
+    console.log('📦 Processing Shopify order:', orderData.order_number);
     
     // Transform Shopify order to CRM format
-    const crmOrder = transformShopifyOrder(orderData)
+    const crmOrder = transformShopifyOrder(orderData);
     
     // Create order in CRM
-    const newOrder = await prisma.createOrder(crmOrder)
+    const newOrder = await prisma.createOrder(crmOrder);
     
     // Log activity
     await logSystemActivity(
@@ -442,18 +441,18 @@ export async function POST(request: NextRequest) {
         orderNumber: orderData.order_number,
         crmOrderId: newOrder.id
       }
-    )
+    );
     
-    console.log('✅ Shopify order imported successfully:', newOrder.id)
+    console.log('✅ Shopify order imported successfully:', newOrder.id);
     
     return NextResponse.json({ 
       success: true, 
       orderId: newOrder.id,
       message: 'Order imported successfully'
-    })
+    });
     
   } catch (error) {
-    console.error('❌ Shopify webhook error:', error)
+    console.error('❌ Shopify webhook error:', error);
     
     // Log error
     try {
@@ -462,15 +461,15 @@ export async function POST(request: NextRequest) {
         `Shopify webhook processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         request,
         { error: error instanceof Error ? error.message : String(error) }
-      )
+      );
     } catch (logError) {
-      console.error('Failed to log webhook error:', logError)
+      console.error('Failed to log webhook error:', logError);
     }
     
     return NextResponse.json({ 
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    }, { status: 500 });
   }
 }
 
@@ -479,38 +478,38 @@ export async function POST(request: NextRequest) {
  */
 function verifyShopifyWebhook(body: string, hmacHeader: string | null): boolean {
   if (!hmacHeader || !SHOPIFY_WEBHOOK_SECRET) {
-    return false
+    return false;
   }
   
   const calculatedHmac = crypto
     .createHmac('sha256', SHOPIFY_WEBHOOK_SECRET)
     .update(body, 'utf8')
-    .digest('base64')
+    .digest('base64');
   
   return crypto.timingSafeEqual(
     Buffer.from(calculatedHmac),
     Buffer.from(hmacHeader)
-  )
+  );
 }
 
 /**
  * Transform Shopify order data to CRM format
  */
 function transformShopifyOrder(shopifyOrder: any) {
-  const customer = shopifyOrder.customer || {}
-  const shippingAddress = shopifyOrder.shipping_address || {}
-  const billingAddress = shopifyOrder.billing_address || {}
+  const customer = shopifyOrder.customer || {};
+  const shippingAddress = shopifyOrder.shipping_address || {};
+  const billingAddress = shopifyOrder.billing_address || {};
   
   // Use shipping address, fallback to billing address
-  const address = shippingAddress.address1 || billingAddress.address1 || ''
-  const city = shippingAddress.city || billingAddress.city || ''
-  const province = shippingAddress.province || billingAddress.province || ''
-  const zip = shippingAddress.zip || billingAddress.zip || ''
-  const country = shippingAddress.country || billingAddress.country || ''
+  const address = shippingAddress.address1 || billingAddress.address1 || '';
+  const city = shippingAddress.city || billingAddress.city || '';
+  const province = shippingAddress.province || billingAddress.province || '';
+  const zip = shippingAddress.zip || billingAddress.zip || '';
+  const country = shippingAddress.country || billingAddress.country || '';
   
   const fullAddress = [address, city, province, zip, country]
     .filter(Boolean)
-    .join(', ')
+    .join(', ');
   
   // Transform line items
   const items = shopifyOrder.line_items.map((item: any) => ({
@@ -519,7 +518,7 @@ function transformShopifyOrder(shopifyOrder: any) {
     quantity: item.quantity,
     price: parseFloat(item.price),
     total: parseFloat(item.price) * item.quantity
-  }))
+  }));
   
   // Map Shopify status to CRM status
   const statusMapping: Record<string, string> = {
@@ -530,7 +529,7 @@ function transformShopifyOrder(shopifyOrder: any) {
     'partially_refunded': 'PROCESSING',
     'refunded': 'CANCELLED',
     'voided': 'CANCELLED'
-  }
+  };
   
   return {
     customerName: `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Shopify Customer',
@@ -550,9 +549,9 @@ function transformShopifyOrder(shopifyOrder: any) {
       tags: shopifyOrder.tags,
       source: 'Shopify'
     }
-  }
+  };
 }
-\`\`\`
+```
 
 #### Step 2: Configure Shopify Webhook
 
@@ -571,9 +570,9 @@ function transformShopifyOrder(shopifyOrder: any) {
 
 3. **Set Webhook Secret**:
    - In your CRM environment variables, add:
-     \`\`\`env
-     SHOPIFY_WEBHOOK_SECRET=your-webhook-secret-key
-     \`\`\`
+```env
+SHOPIFY_WEBHOOK_SECRET=your-webhook-secret-key
+```
 
 #### Step 3: Test the Integration
 
@@ -586,62 +585,62 @@ function transformShopifyOrder(shopifyOrder: any) {
 
 For stores that prefer scheduled synchronization over real-time webhooks:
 
-\`\`\`typescript
+```typescript
 // lib/integrations/shopify-sync.ts
-import { ShopifyApi } from '@shopify/shopify-api'
+import { ShopifyApi } from '@shopify/shopify-api';
 
 export class ShopifySync {
-  private api: ShopifyApi
-  private lastSyncTime: Date
+  private api: ShopifyApi;
+  private lastSyncTime: Date;
   
   constructor(shopDomain: string, accessToken: string) {
     this.api = new ShopifyApi({
       shop: shopDomain,
       accessToken: accessToken
-    })
-    this.lastSyncTime = new Date(Date.now() - 24 * 60 * 60 * 1000) // 24 hours ago
+    });
+    this.lastSyncTime = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
   }
   
   async syncOrders(): Promise<void> {
     try {
-      console.log('🔄 Starting Shopify order sync...')
+      console.log('🔄 Starting Shopify order sync...');
       
       const orders = await this.api.rest.Order.all({
         session: this.session,
         created_at_min: this.lastSyncTime.toISOString(),
         status: 'any',
         limit: 250
-      })
+      });
       
-      console.log(`📦 Found ${orders.data.length} orders to sync`)
+      console.log(`📦 Found ${orders.data.length} orders to sync`);
       
       for (const order of orders.data) {
-        await this.processOrder(order)
+        await this.processOrder(order);
       }
       
-      this.lastSyncTime = new Date()
-      console.log('✅ Shopify sync completed')
+      this.lastSyncTime = new Date();
+      console.log('✅ Shopify sync completed');
       
     } catch (error) {
-      console.error('❌ Shopify sync error:', error)
-      throw error
+      console.error('❌ Shopify sync error:', error);
+      throw error;
     }
   }
   
   private async processOrder(shopifyOrder: any): Promise<void> {
     // Check if order already exists
-    const existingOrder = await prisma.findOrderByMetadata('shopifyOrderId', shopifyOrder.id)
+    const existingOrder = await prisma.findOrderByMetadata('shopifyOrderId', shopifyOrder.id);
     
     if (existingOrder) {
-      console.log(`Order ${shopifyOrder.order_number} already exists, skipping`)
-      return
+      console.log(`Order ${shopifyOrder.order_number} already exists, skipping`);
+      return;
     }
     
     // Transform and create order
-    const crmOrder = this.transformOrder(shopifyOrder)
-    await prisma.createOrder(crmOrder)
+    const crmOrder = this.transformOrder(shopifyOrder);
+    await prisma.createOrder(crmOrder);
     
-    console.log(`✅ Order ${shopifyOrder.order_number} synced`)
+    console.log(`✅ Order ${shopifyOrder.order_number} synced`);
   }
 }
 
@@ -650,11 +649,11 @@ export async function runShopifySync() {
   const sync = new ShopifySync(
     process.env.SHOPIFY_SHOP_DOMAIN!,
     process.env.SHOPIFY_ACCESS_TOKEN!
-  )
+  );
   
-  await sync.syncOrders()
+  await sync.syncOrders();
 }
-\`\`\`
+```
 
 ### Method 3: Shopify App Integration
 
@@ -666,15 +665,16 @@ For advanced features and better integration:
    - Set up OAuth flow
 
 2. **Implement OAuth Flow**:
-\`\`\`typescript
+
+```typescript
 // app/api/auth/shopify/route.ts
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const shop = searchParams.get('shop')
-  const code = searchParams.get('code')
+  const { searchParams } = new URL(request.url);
+  const shop = searchParams.get('shop');
+  const code = searchParams.get('code');
   
   if (!shop || !code) {
-    return NextResponse.json({ error: 'Missing parameters' }, { status: 400 })
+    return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
   }
   
   try {
@@ -687,21 +687,21 @@ export async function GET(request: NextRequest) {
         client_secret: process.env.SHOPIFY_API_SECRET,
         code
       })
-    })
+    });
     
-    const { access_token } = await tokenResponse.json()
+    const { access_token } = await tokenResponse.json();
     
     // Store access token securely
-    await storeShopifyCredentials(shop, access_token)
+    await storeShopifyCredentials(shop, access_token);
     
-    return NextResponse.redirect('/dashboard/integrations?shopify=connected')
+    return NextResponse.redirect('/dashboard/integrations?shopify=connected');
     
   } catch (error) {
-    console.error('Shopify OAuth error:', error)
-    return NextResponse.json({ error: 'OAuth failed' }, { status: 500 })
+    console.error('Shopify OAuth error:', error);
+    return NextResponse.json({ error: 'OAuth failed' }, { status: 500 });
   }
 }
-\`\`\`
+```
 
 ---
 
@@ -724,7 +724,7 @@ export async function GET(request: NextRequest) {
 
 ### Environment Variables
 
-\`\`\`env
+```env
 # Google Sheets Integration
 GOOGLE_SHEETS_API_KEY=your-google-api-key
 GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@project.iam.gserviceaccount.com
@@ -739,7 +739,7 @@ SHOPIFY_SHOP_DOMAIN=your-shop.myshopify.com
 # CRM API
 CRM_API_BASE_URL=https://your-crm-domain.com
 CRM_API_KEY=your-crm-api-key
-\`\`\`
+```
 
 ---
 
@@ -775,28 +775,29 @@ CRM_API_KEY=your-crm-api-key
 ### Debug Mode
 
 Enable detailed logging by setting:
-\`\`\`env
+
+```env
 DEBUG_INTEGRATIONS=true
-\`\`\`
+```
 
 ### Testing Endpoints
 
 Create test endpoints for debugging:
 
-\`\`\`typescript
+```typescript
 // app/api/test/integration/route.ts
 export async function POST(request: NextRequest) {
   if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'Not available in production' }, { status: 403 })
+    return NextResponse.json({ error: 'Not available in production' }, { status: 403 });
   }
   
-  const body = await request.json()
-  console.log('Test integration data:', body)
+  const body = await request.json();
+  console.log('Test integration data:', body);
   
   // Process test data
-  return NextResponse.json({ success: true, received: body })
+  return NextResponse.json({ success: true, received: body });
 }
-\`\`\`
+```
 
 ---
 
@@ -806,7 +807,7 @@ export async function POST(request: NextRequest) {
 
 Implement health check endpoints:
 
-\`\`\`typescript
+```typescript
 // app/api/health/integrations/route.ts
 export async function GET() {
   const health = {
@@ -814,11 +815,11 @@ export async function GET() {
     googleSheets: await checkGoogleSheetsAccess(),
     database: await checkDatabaseConnection(),
     timestamp: new Date().toISOString()
-  }
+  };
   
-  return NextResponse.json(health)
+  return NextResponse.json(health);
 }
-\`\`\`
+```
 
 ### Monitoring Dashboard
 
@@ -859,6 +860,6 @@ Set up alerts for:
 
 ---
 
-**Last Updated**: January 2025  
+**Last Updated**: August 2025  
 **Version**: 1.0.0  
 **Maintainer**: CRM Development Team

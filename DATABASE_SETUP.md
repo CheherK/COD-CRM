@@ -11,53 +11,55 @@ This application uses PostgreSQL with Prisma ORM for database management. Follow
 
 ### 1. Install Dependencies
 
-\`\`\`bash
+```bash
 npm install
-\`\`\`
+```
 
 ### 2. Database Configuration
 
 Create a `.env` file in the root directory:
 
-\`\`\`bash
+```bash
 cp .env.example .env
-\`\`\`
+```
 
 Update the `DATABASE_URL` in your `.env` file:
 
-\`\`\`env
+```env
 DATABASE_URL="postgresql://username:password@localhost:5432/crm_database"
-\`\`\`
+```
 
 Replace:
 - `username`: Your PostgreSQL username
-- `password`: Your PostgreSQL password  
+- `password`: Your PostgreSQL password
 - `localhost:5432`: Your PostgreSQL host and port
 - `crm_database`: Your database name
 
 ### 3. Generate Prisma Client
 
-\`\`\`bash
+```bash
 npm run db:generate
-\`\`\`
+```
 
 ### 4. Push Database Schema
 
 For development (creates tables without migrations):
-\`\`\`bash
+
+```bash
 npm run db:push
-\`\`\`
+```
 
 For production (with migrations):
-\`\`\`bash
+
+```bash
 npm run db:migrate
-\`\`\`
+```
 
 ### 5. Seed Database
 
-\`\`\`bash
+```bash
 npm run db:seed
-\`\`\`
+```
 
 This creates:
 - Admin user: `admin` / `password`
@@ -110,11 +112,11 @@ Works with any PostgreSQL provider:
 
 Required environment variables:
 
-\`\`\`env
+```env
 DATABASE_URL="postgresql://..."
 JWT_SECRET="your-secret-key"
 NODE_ENV="production"
-\`\`\`
+```
 
 ## Troubleshooting
 
@@ -127,24 +129,24 @@ NODE_ENV="production"
 
 ### Migration Issues
 
-\`\`\`bash
+```bash
 # Reset database (development only)
 npm run db:push --force-reset
 
 # View migration status
 npx prisma migrate status
-\`\`\`
+```
 
 ### Prisma Client Issues
 
-\`\`\`bash
+```bash
 # Regenerate client
 npm run db:generate
 
 # Clear node_modules and reinstall
 rm -rf node_modules package-lock.json
 npm install
-\`\`\`
+```
 
 ## Security Notes
 

@@ -1452,16 +1452,7 @@ Framework for integrating local courier services with standardized APIs.
 
 ### Contact Information
 
-- **Technical Support**: delivery-support@your-company.com
-- **Integration Issues**: integrations@your-company.com
-- **Emergency Support**: +1-555-DELIVERY (24/7)
-
-### Resources
-
-- [Best Delivery API Documentation](https://docs.bestdelivery.com)
-- [Delivery Status Codes Reference](https://docs.your-crm.com/delivery-status-codes)
-- [Integration Examples Repository](https://github.com/your-company/crm-delivery-examples)
-
+- **Technical Support**: cheherkallebi@gmail.com
 ---
 
 **Last Updated**: August 2025  

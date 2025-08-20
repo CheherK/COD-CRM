@@ -855,9 +855,7 @@ Set up alerts for:
 - [Shopify API Documentation](https://shopify.dev/docs/admin-api)
 
 ### Contact Information
-- **Technical Support**: tech-support@your-company.com
-- **Integration Issues**: integrations@your-company.com
-
+- **Technical Support**: cheherkallebi@gmail.com
 ---
 
 **Last Updated**: August 2025  

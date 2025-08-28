@@ -25,7 +25,7 @@ model User {
   updatedAt   DateTime @updatedAt
 
   orders      Order[]
-  activities  UserActivity[]
+  activities  Activity[]
   statusHistory OrderStatusHistory[]
 
   @@map("users")
@@ -34,7 +34,8 @@ model User {
 model Order {
   id              String      @id @default(cuid())
   customerName    String
-  customerPhone   String
+  customerPhone1  String      // Added as mandatory
+  customerPhone2  String?     // Added as optional
   customerEmail   String?
   customerAddress String
   customerCity    String
@@ -51,6 +52,7 @@ model Order {
   assignedTo      User?       @relation(fields: [assignedToId], references: [id])
   assignedToId    String?
   statusHistory   OrderStatusHistory[]
+  shipments       DeliveryShipment[]
 
   @@map("orders")
 }
@@ -85,16 +87,20 @@ model OrderItem {
   @@map("order_items")
 }
 
-model UserActivity {
+model Activity {
   id        String   @id @default(cuid())
-  action    String
-  details   String?
+  type      String
+  description String
+  userId    String?
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  timestamp DateTime @default(now())
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
+  user      User?    @relation(fields: [userId], references: [id])
 
-  @@map("user_activities")
+  @@map("activities")
 }
 
 model OrderStatusHistory {
@@ -109,6 +115,62 @@ model OrderStatusHistory {
   userId    String?
 
   @@map("order_status_history")
+}
+
+model DeliveryAgency {
+  id               String   @id @default(cuid())
+  name             String
+  enabled          Boolean  @default(false)
+  credentialsType  CredentialsType
+  credentialsUsername String?
+  credentialsEmail String?
+  credentialsPassword String?
+  credentialsApiKey String?
+  settings         Json
+  webhookUrl       String?
+  pollingInterval  Int      @default(30)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  shipments        DeliveryShipment[]
+
+  @@map("delivery_agencies")
+}
+
+model DeliveryShipment {
+  id               String   @id @default(cuid())
+  orderId          String
+  agencyId         String
+  trackingNumber   String
+  barcode          String?
+  status           String
+  lastStatusUpdate DateTime
+  printUrl         String?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  agency           DeliveryAgency @relation(fields: [agencyId], references: [id])
+  statusLogs       DeliveryStatusLog[]
+
+  @@map("delivery_shipments")
+}
+
+model DeliveryStatusLog {
+  id          String   @id @default(cuid())
+  shipmentId  String
+  status      String
+  statusCode  Int?
+  message     String
+  timestamp   DateTime
+  source      LogSource
+  rawData     Json?
+  createdAt   DateTime @default(now())
+
+  shipment    DeliveryShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@map("delivery_status_logs")
 }
 
 enum Role {
@@ -129,10 +191,23 @@ enum OrderStatus {
   REJECTED     // Customer rejects after confirmation call
   DELIVERED    // Successfully delivered
   RETURNED     // Customer didn't answer, order returned
-  ATTEMPT_1    // First delivery attempt
-  ATTEMPT_2    // Second delivery attempt
-  ATTEMPT_3    // Third delivery attempt
+  ATTEMPT      // Delivery attempt
   UPLOADED     // Sent to delivery agency (was confirmed)
   DEPOSIT      // Delivery agency picked up from our site
   IN_TRANSIT   // Currently being shipped by delivery agency
+  PROCESSING   // Added from mock
+  SHIPPED      // Added from mock
+  CANCELLED    // Added from mock
+}
+
+enum CredentialsType {
+  username_password
+  email_password
+  api_key
+}
+
+enum LogSource {
+  api
+  webhook
+  manual
 }

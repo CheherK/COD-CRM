@@ -493,10 +493,10 @@ export class BestDeliveryAgency extends BaseDeliveryAgency {
         <ville>${this.escapeXml(pickup.ville)}</ville>
         <adresse>${this.escapeXml(pickup.adresse)}</adresse>
         <tel>${this.escapeXml(pickup.tel)}</tel>
-        <tel2>${this.escapeXml(pickup.tel2)}</tel2>
+        <tel2>${this.escapeXml(pickup.tel2 || "")}</tel2>
         <designation>${this.escapeXml(pickup.designation)}</designation>
         <prix>${this.escapeXml(pickup.prix)}</prix>
-        <msg>${this.escapeXml(pickup.msg)}</msg>
+        <msg>${this.escapeXml(pickup.msg || "")}</msg>
         <echange>${pickup.echange}</echange>
         <login>${this.escapeXml(pickup.login)}</login>
         <pwd>${this.escapeXml(pickup.pwd)}</pwd>

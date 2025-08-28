@@ -34,15 +34,15 @@ model User {
 model Order {
   id              String      @id @default(cuid())
   customerName    String
-  customerPhone1  String      // Added as mandatory
-  customerPhone2  String?     // Added as optional
+  customerPhone1  String      // Primary phone (mandatory)
+  customerPhone2  String?     // Secondary phone (optional)
   customerEmail   String?
   customerAddress String
   customerCity    String
   status          OrderStatus @default(PENDING)
   deliveryCompany String?
-  total           Decimal
-  deliveryPrice   Decimal?
+  total           Decimal     @db.Decimal(10, 2)
+  deliveryPrice   Decimal?    @db.Decimal(10, 2)
   notes           String?
   attemptCount    Int         @default(0)
   createdAt       DateTime    @default(now())
@@ -63,7 +63,7 @@ model Product {
   name        String
   nameEn      String
   nameFr      String
-  price       Decimal
+  price       Decimal @db.Decimal(10, 2)
   imageUrl    String?
   isActive    Boolean @default(true)
   createdAt   DateTime @default(now())
@@ -77,7 +77,7 @@ model Product {
 model OrderItem {
   id        String  @id @default(cuid())
   quantity  Int
-  price     Decimal
+  price     Decimal @db.Decimal(10, 2)
 
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   orderId   String
@@ -98,7 +98,7 @@ model Activity {
   timestamp DateTime @default(now())
   createdAt DateTime @default(now())
 
-  user      User?    @relation(fields: [userId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@map("activities")
 }
@@ -111,7 +111,7 @@ model OrderStatusHistory {
 
   order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   orderId   String
-  user      User?       @relation(fields: [userId], references: [id])
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
   userId    String?
 
   @@map("order_status_history")
@@ -151,9 +151,12 @@ model DeliveryShipment {
   updatedAt        DateTime @updatedAt
 
   order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  agency           DeliveryAgency @relation(fields: [agencyId], references: [id])
+  agency           DeliveryAgency @relation(fields: [agencyId], references: [id], onDelete: Restrict)
   statusLogs       DeliveryStatusLog[]
 
+  @@unique([orderId, agencyId])
+  @@index([trackingNumber])
+  @@index([status])
   @@map("delivery_shipments")
 }
 
@@ -170,6 +173,8 @@ model DeliveryStatusLog {
 
   shipment    DeliveryShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
 
+  @@index([shipmentId])
+  @@index([timestamp])
   @@map("delivery_status_logs")
 }
 
@@ -195,9 +200,9 @@ enum OrderStatus {
   UPLOADED     // Sent to delivery agency (was confirmed)
   DEPOSIT      // Delivery agency picked up from our site
   IN_TRANSIT   // Currently being shipped by delivery agency
-  PROCESSING   // Added from mock
-  SHIPPED      // Added from mock
-  CANCELLED    // Added from mock
+  PROCESSING   // Order being processed
+  SHIPPED      // Order has been shipped
+  CANCELLED    // Order cancelled
 }
 
 enum CredentialsType {

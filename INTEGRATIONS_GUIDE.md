@@ -734,7 +734,7 @@ SHOPIFY_API_KEY=your-shopify-api-key
 SHOPIFY_API_SECRET=your-shopify-api-secret
 SHOPIFY_WEBHOOK_SECRET=your-webhook-secret
 SHOPIFY_ACCESS_TOKEN=your-access-token
-SHOPIFY_SHOP_DOMAIN=your-shop.myshopify.com
+SHOPIFY_SHOP_DOMAIN=your-shop.store
 
 # CRM API
 CRM_API_BASE_URL=https://your-crm-domain.com

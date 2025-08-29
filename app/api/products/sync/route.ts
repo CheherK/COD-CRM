@@ -12,7 +12,7 @@ async function fetchShopifyProducts(limit = 250, pageInfo?: string) {
     throw new Error('Shopify credentials not configured');
   }
 
-  const url = new URL(`https://${shopifyStore}.myshopify.com/admin/api/2024-01/products.json`);
+  const url = new URL(`https://${shopifyStore}.store/admin/api/2025-07/products.json`);
   url.searchParams.set('limit', limit.toString());
   if (pageInfo) {
     url.searchParams.set('page_info', pageInfo);

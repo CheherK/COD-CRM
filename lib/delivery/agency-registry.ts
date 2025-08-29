@@ -1,16 +1,14 @@
-import type { IDeliveryAgency, DeliveryAgencyConfig } from "./types"
-import { BestDeliveryAgency } from "./agencies/best-delivery"
-import { prismaClient } from "../prisma"
+import type { IDeliveryAgency, DeliveryAgencyConfig } from './types'
+import { BestDeliveryAgency } from './agencies/best-delivery'
+import prisma from '@/lib/prisma'
 
 export class DeliveryAgencyRegistry {
   private static instance: DeliveryAgencyRegistry
-  private agencies: Map<string, IDeliveryAgency> = new Map()
-  private configs: Map<string, DeliveryAgencyConfig> = new Map()
+  private agencies = new Map<string, IDeliveryAgency>()
+  private configs = new Map<string, DeliveryAgencyConfig>()
   private initialized = false
 
-  private constructor() {
-    this.initialize()
-  }
+  private constructor() {}
 
   public static getInstance(): DeliveryAgencyRegistry {
     if (!DeliveryAgencyRegistry.instance) {
@@ -19,31 +17,30 @@ export class DeliveryAgencyRegistry {
     return DeliveryAgencyRegistry.instance
   }
 
-  private async initialize() {
+  public async ensureInitialized(): Promise<void> {
     if (this.initialized) return
 
-    console.log("🔄 Initializing delivery agency registry...")
+    console.log('🔄 Initializing delivery agencies...')
 
     // Register built-in agencies
-    await this.registerDefaultAgencies()
+    this.registerDefaultAgencies()
 
-    // Load configurations from database
-    await this.loadConfigurationsFromDatabase()
+    // Load configs from database
+    await this.loadConfigurations()
 
     this.initialized = true
-    console.log("✅ Delivery agency registry initialized")
+    console.log('✅ Delivery agencies initialized')
   }
 
-  private async registerDefaultAgencies() {
-    // Register Best Delivery
+  private registerDefaultAgencies() {
     const bestDelivery = new BestDeliveryAgency()
     this.agencies.set(bestDelivery.id, bestDelivery)
-    console.log(`✅ Registered delivery agency: ${bestDelivery.name}`)
+    console.log(`✅ Registered: ${bestDelivery.name}`)
   }
 
-  private async loadConfigurationsFromDatabase() {
+  private async loadConfigurations() {
     try {
-      const dbAgencies = await prismaClient.deliveryAgency.findMany()
+      const dbAgencies = await prisma.deliveryAgency.findMany()
 
       for (const dbAgency of dbAgencies) {
         const config: DeliveryAgencyConfig = {
@@ -51,37 +48,29 @@ export class DeliveryAgencyRegistry {
           name: dbAgency.name,
           enabled: dbAgency.enabled,
           credentials: {
-            type: dbAgency.credentialsType,
+            type: dbAgency.credentialsType as any,
             username: dbAgency.credentialsUsername || undefined,
             email: dbAgency.credentialsEmail || undefined,
             password: dbAgency.credentialsPassword || undefined,
             apiKey: dbAgency.credentialsApiKey || undefined,
           },
-          settings: dbAgency.settings || {},
-          webhookUrl: dbAgency.webhookUrl || undefined,
-          pollingInterval: dbAgency.pollingInterval,
+          settings: dbAgency.settings as Record<string, any> || {},
         }
 
         this.configs.set(dbAgency.id, config)
-        console.log(`📋 Loaded config for delivery agency: ${dbAgency.name}`)
+        console.log(`📋 Loaded config: ${dbAgency.name}`)
       }
     } catch (error) {
-      console.error("❌ Failed to load delivery agency configurations:", error)
+      console.error('❌ Failed to load agency configs:', error)
     }
   }
 
-  public registerAgency(agency: IDeliveryAgency, config: DeliveryAgencyConfig) {
-    this.agencies.set(agency.id, agency)
-    this.configs.set(agency.id, config)
-    console.log(`✅ Registered delivery agency: ${agency.name}`)
+  public getAgency(id: string): IDeliveryAgency | null {
+    return this.agencies.get(id) || null
   }
 
-  public getAgency(id: string): IDeliveryAgency | undefined {
-    return this.agencies.get(id)
-  }
-
-  public getAgencyConfig(id: string): DeliveryAgencyConfig | undefined {
-    return this.configs.get(id)
+  public getAgencyConfig(id: string): DeliveryAgencyConfig | null {
+    return this.configs.get(id) || null
   }
 
   public getAllAgencies(): IDeliveryAgency[] {
@@ -93,7 +82,7 @@ export class DeliveryAgencyRegistry {
 
     for (const [id, agency] of this.agencies) {
       const config = this.configs.get(id)
-      if (config && config.enabled) {
+      if (config?.enabled) {
         enabled.push({ agency, config })
       }
     }
@@ -101,51 +90,33 @@ export class DeliveryAgencyRegistry {
     return enabled
   }
 
-  public async updateAgencyConfig(id: string, configUpdate: Partial<DeliveryAgencyConfig>) {
+  public async updateAgencyConfig(id: string, updates: Partial<DeliveryAgencyConfig>): Promise<void> {
     const existingConfig = this.configs.get(id)
     if (!existingConfig) {
-      console.error(`❌ Agency config not found: ${id}`)
-      return
+      throw new Error(`Agency config not found: ${id}`)
     }
 
-    const updatedConfig = { ...existingConfig, ...configUpdate }
+    const updatedConfig = { ...existingConfig, ...updates }
     this.configs.set(id, updatedConfig)
 
     // Update in database
-    try {
-      await prismaClient.deliveryAgency.update({
-        where: { id },
-        data: {
-          enabled: updatedConfig.enabled,
-          credentialsType: updatedConfig.credentials.type,
-          credentialsUsername: updatedConfig.credentials.username || null,
-          credentialsEmail: updatedConfig.credentials.email || null,
-          credentialsPassword: updatedConfig.credentials.password || null,
-          credentialsApiKey: updatedConfig.credentials.apiKey || null,
-          settings: updatedConfig.settings,
-          webhookUrl: updatedConfig.webhookUrl || null,
-          pollingInterval: updatedConfig.pollingInterval || 30,
-        },
-      })
-      console.log(`✅ Updated config for delivery agency: ${id}`)
-    } catch (error) {
-      console.error(`❌ Failed to update delivery agency config in database: ${id}`, error)
-    }
+    await prisma.deliveryAgency.update({
+      where: { id },
+      data: {
+        enabled: updatedConfig.enabled,
+        credentialsUsername: updatedConfig.credentials.username || null,
+        credentialsEmail: updatedConfig.credentials.email || null,
+        credentialsPassword: updatedConfig.credentials.password || null,
+        credentialsApiKey: updatedConfig.credentials.apiKey || null,
+        settings: updatedConfig.settings || {},
+      },
+    })
+
+    console.log(`✅ Updated config: ${id}`)
   }
 
   public isAgencyEnabled(id: string): boolean {
-    const config = this.configs.get(id)
-    return config?.enabled || false
-  }
-
-  public getAgenciesByRegion(region: string): Array<{ agency: IDeliveryAgency; config: DeliveryAgencyConfig }> {
-    return this.getEnabledAgencies().filter(({ agency }) => agency.supportedRegions.includes(region))
-  }
-
-  public async ensureInitialized(): Promise<void> {
-    if (!this.initialized) {
-      await this.initialize()
-    }
+    return this.configs.get(id)?.enabled || false
   }
 }
 

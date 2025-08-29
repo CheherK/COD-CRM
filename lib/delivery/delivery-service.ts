@@ -1,19 +1,25 @@
-import { deliveryRegistry } from "./agency-registry"
-import { logOrderActivity } from "../activity-logger"
-import { prismaClient } from "../prisma"
-import type { DeliveryOrder, DeliveryOrderResponse, DeliveryTrackingResponse, DeliveryShipment } from "./types"
-import type { NextRequest } from "next/server"
+import { deliveryRegistry } from './agency-registry';
+import { logOrderActivity } from '@/lib/activity-logger';
+import prisma from '@/lib/prisma';
+import type {
+  DeliveryOrder,
+  DeliveryOrderResponse,
+  DeliveryTrackingResponse,
+  DeliveryShipment,
+  SyncResult
+} from './types';
+import type { NextRequest } from 'next/server';
 
 export class DeliveryService {
-  private static instance: DeliveryService
+  private static instance: DeliveryService;
 
-  private constructor() {}
+  private constructor() { }
 
   public static getInstance(): DeliveryService {
     if (!DeliveryService.instance) {
-      DeliveryService.instance = new DeliveryService()
+      DeliveryService.instance = new DeliveryService();
     }
-    return DeliveryService.instance
+    return DeliveryService.instance;
   }
 
   async createShipment(
@@ -23,85 +29,61 @@ export class DeliveryService {
     request: NextRequest,
     userId?: string,
   ): Promise<DeliveryOrderResponse> {
-    console.log(`🚚 Creating shipment for order ${orderId} with agency ${agencyId}`)
+    console.log(`🚚 Creating shipment for order ${orderId} via ${agencyId}`);
 
     try {
-      // Get agency and config
-      const agency = deliveryRegistry.getAgency(agencyId)
-      const config = deliveryRegistry.getAgencyConfig(agencyId)
+      await deliveryRegistry.ensureInitialized();
+
+      const agency = deliveryRegistry.getAgency(agencyId);
+      const config = deliveryRegistry.getAgencyConfig(agencyId);
 
       if (!agency || !config) {
-        return {
-          success: false,
-          error: "Agency not found",
-          errorDetails: `Delivery agency ${agencyId} is not registered`,
-        }
+        return { success: false, error: 'Agency not found' };
       }
 
       if (!config.enabled) {
-        return {
-          success: false,
-          error: "Agency disabled",
-          errorDetails: `Delivery agency ${agencyId} is currently disabled`,
-        }
-      }
-
-      // Validate order
-      const validation = agency.validateOrder(order)
-      if (!validation.valid) {
-        return {
-          success: false,
-          error: "Order validation failed",
-          errorDetails: validation.errors.join(", "),
-        }
-      }
-
-      // Check if agency supports the region
-      if (!agency.supportedRegions.includes(order.governorate)) {
-        return {
-          success: false,
-          error: "Unsupported region",
-          errorDetails: `Agency ${agency.name} does not support ${order.governorate}`,
-        }
+        return { success: false, error: 'Agency is disabled' };
       }
 
       // Create order with agency
-      const result = await agency.createOrder(order, config.credentials)
+      const result = await agency.createOrder(order, config.credentials);
 
       if (result.success && result.trackingNumber) {
-        // Save shipment to database
-        const shipment = await prismaClient.deliveryShipment.create({
+        // Save to database
+        const shipment = await prisma.deliveryShipment.create({
           data: {
             orderId,
             agencyId,
             trackingNumber: result.trackingNumber,
             barcode: result.barcode,
-            status: "PENDING",
+            status: 'PENDING',
+            lastStatusUpdate: new Date(),
             printUrl: result.printUrl,
             metadata: {
               customerName: order.customerName,
               governorate: order.governorate,
               city: order.city,
+              phone: order.customerPhone,
               price: order.price,
             },
           },
-        })
+        });
 
-        // Log initial status
-        await prismaClient.deliveryStatusLog.create({
+        // Log status
+        await prisma.deliveryStatusLog.create({
           data: {
             shipmentId: shipment.id,
-            status: "PENDING",
-            message: "Shipment created",
+            status: 'PENDING',
+            message: 'Shipment created',
             timestamp: new Date(),
-            source: "api",
+            source: 'api',
           },
-        })
+        });
 
         // Log activity
         await logOrderActivity(
-          "ORDER_SHIPPED",
-          `Order ${orderId} shipped via ${agency.name} - Tracking: ${result.trackingNumber}`,
+          'ORDER_SHIPPED',
+          `Order shipped via ${agency.name} - Tracking: ${result.trackingNumber}`,
           request,
           userId,
           orderId,
@@ -109,355 +91,156 @@ export class DeliveryService {
             agencyId,
             agencyName: agency.name,
             trackingNumber: result.trackingNumber,
-            shipmentId: shipment.id,
           },
-        )
+        );
 
-        console.log(`✅ Shipment created successfully: ${result.trackingNumber}`)
+        console.log(`✅ Shipment created: ${result.trackingNumber}`);
       }
 
-      return result
+      return result;
     } catch (error) {
-      console.error(`❌ Failed to create shipment for order ${orderId}:`, error)
+      console.error(`❌ Failed to create shipment:`, error);
       return {
         success: false,
-        error: "Service error",
-        errorDetails: error instanceof Error ? error.message : "Unknown error",
-      }
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   }
 
   async trackShipment(shipmentId: string): Promise<DeliveryTrackingResponse> {
-    console.log(`🔍 Tracking shipment ${shipmentId}`)
+    console.log(`🔍 Tracking shipment ${shipmentId}`);
 
     try {
-      // Get shipment from database
-      const shipment = await prismaClient.deliveryShipment.findUnique({
+      const shipment = await prisma.deliveryShipment.findUnique({
         where: { id: shipmentId },
-      })
+      });
 
       if (!shipment) {
-        return {
-          success: false,
-          error: "Shipment not found",
-          errorDetails: `Shipment ${shipmentId} does not exist`,
-        }
+        return { success: false, error: 'Shipment not found' };
       }
 
-      // Get agency and config
-      const agency = deliveryRegistry.getAgency(shipment.agencyId)
-      const config = deliveryRegistry.getAgencyConfig(shipment.agencyId)
+      const agency = deliveryRegistry.getAgency(shipment.agencyId);
+      const config = deliveryRegistry.getAgencyConfig(shipment.agencyId);
 
       if (!agency || !config) {
-        return {
-          success: false,
-          error: "Agency not found",
-          errorDetails: `Delivery agency ${shipment.agencyId} is not registered`,
-        }
+        return { success: false, error: 'Agency not found' };
       }
 
-      // Get status from agency
-      const result = await agency.getOrderStatus(shipment.trackingNumber, config.credentials)
+      const result = await agency.trackOrder(shipment.trackingNumber, config.credentials);
 
       if (result.success && result.status) {
-        // Update shipment status if changed
+        // Update shipment if status changed
         if (result.status.status !== shipment.status) {
-          await prismaClient.deliveryShipment.update({
+          await prisma.deliveryShipment.update({
             where: { id: shipmentId },
             data: {
               status: result.status.status,
               lastStatusUpdate: new Date(),
             },
-          })
+          });
 
           // Log status change
-          await prismaClient.deliveryStatusLog.create({
+          await prisma.deliveryStatusLog.create({
             data: {
               shipmentId,
               status: result.status.status,
-              statusCode: result.status.statusCode,
               message: result.status.message,
               timestamp: new Date(),
-              source: "api",
+              source: 'api',
             },
-          })
+          });
 
-          console.log(`📝 Updated shipment ${shipmentId} status to ${result.status.status}`)
+          console.log(`📝 Status updated: ${shipment.status} → ${result.status.status}`);
         }
       }
 
-      return result
+      return result;
     } catch (error) {
-      console.error(`❌ Failed to track shipment ${shipmentId}:`, error)
+      console.error(`❌ Failed to track shipment:`, error);
       return {
         success: false,
-        error: "Service error",
-        errorDetails: error instanceof Error ? error.message : "Unknown error",
-      }
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   }
 
   async trackShipmentByTrackingNumber(trackingNumber: string): Promise<DeliveryTrackingResponse> {
-    console.log(`🔍 Tracking shipment by tracking number ${trackingNumber}`)
+    const shipment = await prisma.deliveryShipment.findFirst({
+      where: { trackingNumber },
+    });
 
-    try {
-      // Get shipment from database
-      const shipment = await prismaClient.deliveryShipment.findUnique({
-        where: { trackingNumber },
-      })
-
-      if (!shipment) {
-        return {
-          success: false,
-          error: "Shipment not found",
-          errorDetails: `Shipment with tracking number ${trackingNumber} does not exist`,
-        }
-      }
-
-      return this.trackShipment(shipment.id)
-    } catch (error) {
-      console.error(`❌ Failed to track shipment by tracking number ${trackingNumber}:`, error)
-      return {
-        success: false,
-        error: "Service error",
-        errorDetails: error instanceof Error ? error.message : "Unknown error",
-      }
+    if (!shipment) {
+      return { success: false, error: 'Shipment not found' };
     }
-  }
 
-  async getShipmentHistory(shipmentId: string): Promise<DeliveryTrackingResponse> {
-    console.log(`📋 Getting shipment history for ${shipmentId}`)
-
-    try {
-      // Get shipment from database
-      const shipment = await prismaClient.deliveryShipment.findUnique({
-        where: { id: shipmentId },
-      })
-
-      if (!shipment) {
-        return {
-          success: false,
-          error: "Shipment not found",
-          errorDetails: `Shipment ${shipmentId} does not exist`,
-        }
-      }
-
-      // Get agency and config
-      const agency = deliveryRegistry.getAgency(shipment.agencyId)
-      const config = deliveryRegistry.getAgencyConfig(shipment.agencyId)
-
-      if (!agency || !config) {
-        return {
-          success: false,
-          error: "Agency not found",
-          errorDetails: `Delivery agency ${shipment.agencyId} is not registered`,
-        }
-      }
-
-      // Get history from agency
-      const result = await agency.getOrderHistory(shipment.trackingNumber, config.credentials)
-
-      if (result.success && result.status?.history) {
-        // Update local status logs with any new entries
-        const existingLogs = await prismaClient.deliveryStatusLog.findMany({
-          where: { shipmentId },
-          orderBy: { timestamp: "desc" },
-        })
-
-        for (const historyItem of result.status.history) {
-          // Check if this status change already exists
-          const exists = existingLogs.some(
-            (log) =>
-              log.status === historyItem.status &&
-              Math.abs(log.timestamp.getTime() - historyItem.date.getTime()) < 60000, // Within 1 minute
-          )
-
-          if (!exists) {
-            await prismaClient.deliveryStatusLog.create({
-              data: {
-                shipmentId,
-                status: historyItem.status,
-                message: historyItem.message,
-                timestamp: historyItem.date,
-                source: "api",
-              },
-            })
-          }
-        }
-
-        // Update shipment with latest status
-        const latestStatus = result.status.history[0]
-        if (latestStatus && latestStatus.status !== shipment.status) {
-          await prismaClient.deliveryShipment.update({
-            where: { id: shipmentId },
-            data: {
-              status: latestStatus.status,
-              lastStatusUpdate: latestStatus.date,
-            },
-          })
-        }
-      }
-
-      return result
-    } catch (error) {
-      console.error(`❌ Failed to get shipment history for ${shipmentId}:`, error)
-      return {
-        success: false,
-        error: "Service error",
-        errorDetails: error instanceof Error ? error.message : "Unknown error",
-      }
-    }
-  }
-
-  async syncAllShipments(): Promise<void> {
-    console.log("🔄 Starting shipment sync process")
-
-    try {
-      const activeShipments = await prismaClient.deliveryShipment.findMany({
-        where: {
-          status: {
-            in: ["PENDING", "CONFIRMED", "PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY"],
-          },
-        },
-      })
-
-      console.log(`Found ${activeShipments.length} active shipments to sync`)
-
-      for (const shipment of activeShipments) {
-        try {
-          await this.trackShipment(shipment.id)
-          // Add small delay to avoid overwhelming APIs
-          await new Promise((resolve) => setTimeout(resolve, 1000))
-        } catch (error) {
-          console.error(`Failed to sync shipment ${shipment.id}:`, error)
-        }
-      }
-
-      console.log("✅ Shipment sync completed")
-    } catch (error) {
-      console.error("❌ Shipment sync failed:", error)
-    }
+    return this.trackShipment(shipment.id);
   }
 
   async getShipmentsByOrderId(orderId: string): Promise<DeliveryShipment[]> {
     try {
-      const shipments = await prismaClient.deliveryShipment.findMany({
+      const shipments = await prisma.deliveryShipment.findMany({
         where: { orderId },
-      })
-      return shipments
+        orderBy: { createdAt: 'desc' },
+      });
+      return shipments;
     } catch (error) {
-      console.error(`❌ Failed to get shipments for order ${orderId}:`, error)
-      return []
-    }
-  }
-
-  async getDeliveryStats(): Promise<{
-    totalShipments: number
-    activeShipments: number
-    deliveredShipments: number
-    pendingShipments: number
-    byAgency: Record<string, number>
-    byStatus: Record<string, number>
-  }> {
-    try {
-      return await prismaClient.getDeliveryStats()
-    } catch (error) {
-      console.error("❌ Failed to get delivery stats:", error)
-      return {
-        totalShipments: 0,
-        activeShipments: 0,
-        deliveredShipments: 0,
-        pendingShipments: 0,
-        byAgency: {},
-        byStatus: {},
-      }
+      console.error(`❌ Failed to get shipments for order ${orderId}:`, error);
+      return [];
     }
   }
 
   async getAllShipments(limit?: number): Promise<DeliveryShipment[]> {
-    console.log("📦 Getting all shipments")
-
     try {
-      const shipments = await prismaClient.deliveryShipment.findMany({
+      const shipments = await prisma.deliveryShipment.findMany({
         ...(limit && { take: limit }),
-        orderBy: { createdAt: "desc" },
-      })
-
-      return shipments
+        orderBy: { createdAt: 'desc' },
+      });
+      return shipments;
     } catch (error) {
-      console.error("❌ Failed to get shipments:", error)
-      return []
+      console.error('❌ Failed to get shipments:', error);
+      return [];
     }
+  }
+
+  async retryShipment(
+    shipmentId: string,
+    request: NextRequest,
+    userId?: string,
+  ): Promise<DeliveryOrderResponse> {
+    const shipment = await prisma.deliveryShipment.findUnique({
+      where: { id: shipmentId },
+    });
+
+    if (!shipment?.metadata) {
+      return { success: false, error: 'Shipment not found or missing data' };
+    }
+
+    // Reconstruct order from metadata
+    const order: DeliveryOrder = {
+      customerName: shipment.metadata.customerName as string,
+      customerPhone: shipment.metadata.phone as string,
+      governorate: shipment.metadata.governorate as string,
+      city: shipment.metadata.city as string,
+      address: shipment.metadata.address as string,
+      productName: shipment.metadata.productName as string,
+      price: shipment.metadata.price as number,
+      notes: shipment.metadata.notes as string,
+    };
+
+    return this.createShipment(shipment.orderId, shipment.agencyId, order, request, userId);
   }
 
   async deleteShipment(shipmentId: string): Promise<boolean> {
-    console.log(`🗑️ Deleting shipment ${shipmentId}`)
-
     try {
-      const shipment = await prismaClient.deliveryShipment.findUnique({
+      // Soft delete by updating status
+      await prisma.deliveryShipment.update({
         where: { id: shipmentId },
-      })
-
-      if (!shipment) {
-        return false
-      }
-
-      // You might want to soft delete instead of hard delete
-      // For now, we'll just update the status to indicate deletion
-      await prismaClient.deliveryShipment.update({
-        where: { id: shipmentId },
-        data: {
-          status: "CANCELLED",
-          updatedAt: new Date(),
-        },
-      })
-
-      console.log(`✅ Shipment ${shipmentId} deleted (cancelled)`)
-      return true
+        data: { status: 'CANCELLED' },
+      });
+      return true;
     } catch (error) {
-      console.error(`❌ Failed to delete shipment ${shipmentId}:`, error)
-      return false
-    }
-  }
-
-  async retryShipment(shipmentId: string, request: NextRequest, userId?: string): Promise<DeliveryOrderResponse> {
-    console.log(`🔄 Retrying shipment ${shipmentId}`)
-
-    try {
-      const shipment = await prismaClient.deliveryShipment.findUnique({
-        where: { id: shipmentId },
-      })
-
-      if (!shipment || !shipment.metadata) {
-        return {
-          success: false,
-          error: "Shipment not found or missing metadata",
-        }
-      }
-
-      // Reconstruct the original order from metadata
-      const order = {
-        customerName: shipment.metadata.customerName as string,
-        governorate: shipment.metadata.governorate as string,
-        city: shipment.metadata.city as string,
-        address: shipment.metadata.address as string,
-        phone: shipment.metadata.phone as string,
-        phone2: shipment.metadata.phone2 as string,
-        productName: shipment.metadata.productName as string,
-        price: shipment.metadata.price as number,
-        comment: shipment.metadata.comment as string,
-        isExchange: (shipment.metadata.isExchange as boolean) || false,
-      }
-
-      // Create a new shipment
-      return this.createShipment(shipment.orderId, shipment.agencyId, order, request, userId)
-    } catch (error) {
-      console.error(`❌ Failed to retry shipment ${shipmentId}:`, error)
-      return {
-        success: false,
-        error: "Service error",
-        errorDetails: error instanceof Error ? error.message : "Unknown error",
-      }
+      console.error(`❌ Failed to delete shipment ${shipmentId}:`, error);
+      return false;
     }
   }
 
@@ -466,69 +249,52 @@ export class DeliveryService {
     newStatus: string,
     request: NextRequest,
     userId?: string,
-  ): Promise<{ success: boolean; updated: number; errors: string[] }> {
-    console.log(`📦 Bulk updating ${shipmentIds.length} shipments to status: ${newStatus}`)
-
-    const errors: string[] = []
-    let updated = 0
+  ): Promise<{ success: boolean; updated: number; errors: string[]; }> {
+    const errors: string[] = [];
+    let updated = 0;
 
     for (const shipmentId of shipmentIds) {
       try {
-        const result = await prismaClient.deliveryShipment.update({
+        await prisma.deliveryShipment.update({
           where: { id: shipmentId },
           data: {
             status: newStatus,
             lastStatusUpdate: new Date(),
-            updatedAt: new Date(),
           },
-        })
+        });
 
-        if (result) {
-          updated++
+        // Log status change
+        await prisma.deliveryStatusLog.create({
+          data: {
+            shipmentId,
+            status: newStatus,
+            message: `Bulk update to ${newStatus}`,
+            timestamp: new Date(),
+            source: 'manual',
+          },
+        });
 
-          // Log status change
-          await prismaClient.deliveryStatusLog.create({
-            data: {
-              shipmentId,
-              status: newStatus,
-              message: `Bulk status update to ${newStatus}`,
-              timestamp: new Date(),
-              source: "manual",
-            },
-          })
-        }
+        updated++;
       } catch (error) {
-        console.error(`❌ Failed to update shipment ${shipmentId}:`, error)
-        errors.push(`Shipment ${shipmentId}: ${error instanceof Error ? error.message : "Unknown error"}`)
+        errors.push(`${shipmentId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
     // Log activity
     if (userId) {
       await logOrderActivity(
-        "SHIPMENTS_BULK_UPDATED",
-        `Bulk updated ${updated} shipments to status ${newStatus}`,
+        'SHIPMENTS_BULK_UPDATED',
+        `Bulk updated ${updated} shipments to ${newStatus}`,
         request,
         userId,
         undefined,
-        {
-          shipmentIds,
-          newStatus,
-          updated,
-          errors: errors.length,
-        },
-      )
+        { shipmentIds, newStatus, updated, errors: errors.length },
+      );
     }
 
-    console.log(`✅ Bulk update completed: ${updated} updated, ${errors.length} errors`)
-
-    return {
-      success: errors.length === 0,
-      updated,
-      errors,
-    }
+    return { success: errors.length === 0, updated, errors };
   }
 }
 
 // Export singleton instance
-export const deliveryService = DeliveryService.getInstance()
+export const deliveryService = DeliveryService.getInstance();

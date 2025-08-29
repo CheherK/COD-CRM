@@ -21,6 +21,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Activity,
+  ShoppingCart,
 } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useLanguage } from "@/contexts/language-context"
@@ -37,6 +38,12 @@ const navigation = [
     name: "orders",
     href: "/dashboard/orders",
     icon: Package,
+    roles: ["ADMIN", "STAFF"],
+  },
+  {
+    name: "products",
+    href: "/dashboard/products",
+    icon: ShoppingCart,
     roles: ["ADMIN", "STAFF"],
   },
   {

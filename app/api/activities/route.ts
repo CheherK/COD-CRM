@@ -34,31 +34,50 @@ export async function GET(request: NextRequest) {
 
     console.log(`📊 Fetching activities - User: ${user.username}, Role: ${user.role}, Limit: ${limit}`)
 
-    // Determine which activities to fetch based on user role and permissions
-    let targetUserId: string | undefined
+    // Build where clause based on user role and parameters
+    let whereClause: any = {}
 
+    // Determine which activities to fetch based on user role and permissions
     if (userIdParam) {
       // Specific user requested
       if (user.role === "STAFF" && userIdParam !== user.id) {
         // Staff can only see their own activities
         return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
       }
-      targetUserId = userIdParam
+      whereClause.userId = userIdParam
     } else {
       // No specific user requested
       if (user.role === "STAFF") {
         // Staff can only see their own activities
-        targetUserId = user.id
+        whereClause.userId = user.id
       }
-      // Admins can see all activities (targetUserId remains undefined)
+      // Admins can see all activities (no userId filter)
     }
 
-    let activities
+    // Add type filter if specified
     if (typeParam) {
-      activities = await prisma.getActivitiesByType(typeParam, limit)
-    } else {
-      activities = await prisma.getActivities(limit, targetUserId)
+      whereClause.type = typeParam
     }
+
+    // Fetch activities from database
+    const activities = await prisma.activity.findMany({
+      where: whereClause,
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: limit
+    })
 
     console.log(`✅ Retrieved ${activities.length} activities for user ${user.username}`)
 
@@ -70,15 +89,7 @@ export async function GET(request: NextRequest) {
       description: activity.description,
       details: activity.description, // For backward compatibility
       userId: activity.userId,
-      user: activity.user
-        ? {
-            id: activity.user.id,
-            username: activity.user.username,
-            firstName: activity.user.firstName,
-            lastName: activity.user.lastName,
-            email: activity.user.email,
-          }
-        : null,
+      user: activity.user,
       metadata: activity.metadata || {},
       timestamp: activity.timestamp,
       createdAt: activity.createdAt,
@@ -136,13 +147,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Type and description are required" }, { status: 400 })
     }
 
-    const activity = await prisma.createActivity({
-      type,
-      description,
-      userId,
-      metadata: metadata || {},
-      ipAddress: request.headers.get("x-forwarded-for") || "127.0.0.1",
-      userAgent: request.headers.get("user-agent") || "unknown",
+    const activity = await prisma.activity.create({
+      data: {
+        type,
+        description,
+        userId,
+        metadata: metadata || {},
+        ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1",
+        userAgent: request.headers.get("user-agent") || "unknown",
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+          }
+        }
+      }
     })
 
     console.log(`✅ Manual activity created: ${activity.type}`)
@@ -154,6 +177,7 @@ export async function POST(request: NextRequest) {
         type: activity.type,
         description: activity.description,
         userId: activity.userId,
+        user: activity.user,
         metadata: activity.metadata,
         timestamp: activity.timestamp,
         createdAt: activity.createdAt,

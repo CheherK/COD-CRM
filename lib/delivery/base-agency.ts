@@ -4,71 +4,79 @@ import type {
   DeliveryOrder,
   DeliveryOrderResponse,
   DeliveryTrackingResponse,
-} from "./types"
+  StandardStatus
+} from './types'
 
 export abstract class BaseDeliveryAgency implements IDeliveryAgency {
-  abstract readonly name: string
   abstract readonly id: string
+  abstract readonly name: string
   abstract readonly supportedRegions: string[]
 
-  // Abstract methods that must be implemented by each agency
-  abstract authenticate(credentials: DeliveryCredentials): Promise<boolean>
+  // Core methods that must be implemented
   abstract createOrder(order: DeliveryOrder, credentials: DeliveryCredentials): Promise<DeliveryOrderResponse>
-  abstract getOrderStatus(trackingNumber: string, credentials: DeliveryCredentials): Promise<DeliveryTrackingResponse>
-  abstract getOrderHistory(trackingNumber: string, credentials: DeliveryCredentials): Promise<DeliveryTrackingResponse>
-  abstract mapStatusToStandard(agencyStatus: string | number): string
-  abstract testConnection(): Promise<{ success: boolean; error?: string; details?: any }>
+  abstract trackOrder(trackingNumber: string, credentials: DeliveryCredentials): Promise<DeliveryTrackingResponse>
+  abstract testConnection(credentials: DeliveryCredentials): Promise<{ success: boolean; error?: string }>
+  
+  // Status mapping - each agency implements their own
+  protected abstract mapAgencyStatus(agencyStatus: string | number): StandardStatus
 
-  // Common validation methods with default implementations
-  validateCredentials(credentials: DeliveryCredentials): { valid: boolean; errors: string[] } {
+  // Common validation methods
+  protected validateCredentials(credentials: DeliveryCredentials): { valid: boolean; errors: string[] } {
     const errors: string[] = []
 
     switch (credentials.type) {
-      case "username_password":
-        if (!credentials.username) errors.push("Username is required")
-        if (!credentials.password) errors.push("Password is required")
+      case 'username_password':
+        if (!credentials.username?.trim()) errors.push('Username is required')
+        if (!credentials.password?.trim()) errors.push('Password is required')
         break
-      case "email_password":
-        if (!credentials.email) errors.push("Email is required")
-        if (!credentials.password) errors.push("Password is required")
+      case 'email_password':
+        if (!credentials.email?.trim()) errors.push('Email is required')
+        if (!credentials.password?.trim()) errors.push('Password is required')
         break
-      case "api_key":
-        if (!credentials.apiKey) errors.push("API key is required")
+      case 'api_key':
+        if (!credentials.apiKey?.trim()) errors.push('API key is required')
         break
       default:
-        errors.push("Invalid credential type")
+        errors.push('Invalid credential type')
     }
 
     return { valid: errors.length === 0, errors }
   }
 
-  validateOrder(order: DeliveryOrder): { valid: boolean; errors: string[] } {
+  protected validateOrder(order: DeliveryOrder): { valid: boolean; errors: string[] } {
     const errors: string[] = []
 
-    if (!order.customerName?.trim()) errors.push("Customer name is required")
-    if (!order.governorate?.trim()) errors.push("Governorate is required")
-    if (!order.city?.trim()) errors.push("City is required")
-    if (!order.address?.trim()) errors.push("Address is required")
-    if (!order.phone?.trim()) errors.push("Phone number is required")
-    if (!order.productName?.trim()) errors.push("Product name is required")
-    if (!order.price || order.price <= 0) errors.push("Valid price is required")
+    if (!order.customerName?.trim()) errors.push('Customer name is required')
+    if (!order.customerPhone?.trim()) errors.push('Customer phone is required')
+    if (!order.governorate?.trim()) errors.push('Governorate is required')
+    if (!order.city?.trim()) errors.push('City is required')
+    if (!order.address?.trim()) errors.push('Address is required')
+    if (!order.productName?.trim()) errors.push('Product name is required')
+    if (!order.price || order.price <= 0) errors.push('Valid price is required')
 
-    // Validate phone number format (basic validation)
-    if (order.phone && !/^\+?[\d\s-()]+$/.test(order.phone)) {
-      errors.push("Invalid phone number format")
+    // Basic phone validation
+    const phoneRegex = /^[\d\s+()-]+$/
+    if (order.customerPhone && !phoneRegex.test(order.customerPhone)) {
+      errors.push('Invalid phone number format')
+    }
+
+    // Check supported regions
+    if (order.governorate && !this.supportedRegions.includes(order.governorate)) {
+      errors.push(`Region ${order.governorate} is not supported by ${this.name}`)
     }
 
     return { valid: errors.length === 0, errors }
   }
 
-  // Helper method for making HTTP requests
+  // HTTP request helper
   protected async makeRequest(url: string, options: RequestInit = {}): Promise<Response> {
     const defaultOptions: RequestInit = {
       headers: {
-        "Content-Type": "application/json",
-        "User-Agent": "CRM-Delivery-System/1.0",
+        'Content-Type': 'application/json',
+        'User-Agent': 'CRM-Delivery-System/1.0',
       },
-      timeout: 30000, // 30 seconds timeout
+      // 30 second timeout
+      signal: AbortSignal.timeout(30000),
     }
 
     const mergedOptions = {
@@ -84,25 +92,30 @@ export abstract class BaseDeliveryAgency implements IDeliveryAgency {
       const response = await fetch(url, mergedOptions)
       return response
     } catch (error) {
-      console.error(`Request failed for ${this.name}:`, error)
-      throw new Error(`Network error: ${error instanceof Error ? error.message : "Unknown error"}`)
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Request timeout')
+        }
+        throw new Error(`Network error: ${error.message}`)
+      }
+      throw new Error('Unknown network error')
     }
   }
 
-  // Helper method for logging
-  protected log(level: "info" | "warn" | "error", message: string, data?: any) {
+  // Logging helper
+  protected log(level: 'info' | 'warn' | 'error', message: string, data?: any) {
+    const prefix = `[${this.name}]`
     const timestamp = new Date().toISOString()
-    const logMessage = `[${timestamp}] [${this.name}] ${message}`
-
+    
     switch (level) {
-      case "info":
-        console.log(logMessage, data || "")
+      case 'info':
+        console.log(`${timestamp} ${prefix} ${message}`, data ? JSON.stringify(data, null, 2) : '')
         break
-      case "warn":
-        console.warn(logMessage, data || "")
+      case 'warn':
+        console.warn(`${timestamp} ${prefix} ${message}`, data ? JSON.stringify(data, null, 2) : '')
         break
-      case "error":
-        console.error(logMessage, data || "")
+      case 'error':
+        console.error(`${timestamp} ${prefix} ${message}`, data || '')
         break
     }
   }

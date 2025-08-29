@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    const { orderIds, action, status } = await request.json()
+    const { orderIds, action, status, assignedToId } = await request.json()
 
     if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
       return NextResponse.json({ error: "Order IDs are required" }, { status: 400 })
@@ -39,17 +39,19 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
         }
 
-        let deletedCount = 0
-        for (const orderId of orderIds) {
-          const success = await prisma.deleteOrder(orderId)
-          if (success) deletedCount++
-        }
+        const { count: deletedCount } = await prisma.order.deleteMany({
+          where: {
+            id: { in: orderIds }
+          }
+        })
 
         await logOrderActivity(
-          "ORDERS_BULK_DELETED",
+          "BULK_DELETED",
           `${deletedCount} orders bulk deleted by ${user.username}`,
           request,
           user.id,
+          undefined,
+          { orderIds, deletedCount }
         )
 
         result.deletedCount = deletedCount
@@ -60,51 +62,114 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "Status is required for update action" }, { status: 400 })
         }
 
-        let updatedCount = 0
-        for (const orderId of orderIds) {
-          const updated = await prisma.updateOrder(orderId, { status })
-          if (updated) updatedCount++
-        }
+        const { count: updatedCount } = await prisma.order.updateMany({
+          where: {
+            id: { in: orderIds }
+          },
+          data: { status }
+        })
+
+        // Create status history entries for bulk update
+        await prisma.orderStatusHistory.createMany({
+          data: orderIds.map(orderId => ({
+            orderId,
+            status,
+            notes: `Bulk status update to ${status}`,
+            userId: user.id
+          }))
+        })
 
         await logOrderActivity(
-          "ORDERS_BULK_UPDATED",
+          "BULK_STATUS_UPDATED",
           `${updatedCount} orders status updated to ${status} by ${user.username}`,
           request,
           user.id,
+          undefined,
+          { orderIds, status, updatedCount }
         )
 
         result.updatedCount = updatedCount
         break
 
-      case "export":
-        // Get orders for export
-        const orders = []
-        for (const orderId of orderIds) {
-          const order = await prisma.findOrderById(orderId)
-          if (order) orders.push(order)
+      case "assign":
+        if (!assignedToId) {
+          return NextResponse.json({ error: "Assigned user ID is required for assign action" }, { status: 400 })
         }
 
+        // Verify the assigned user exists
+        const assignedUser = await prisma.user.findUnique({
+          where: { id: assignedToId },
+          select: { id: true, username: true }
+        })
+
+        if (!assignedUser) {
+          return NextResponse.json({ error: "Assigned user not found" }, { status: 404 })
+        }
+
+        const { count: assignedCount } = await prisma.order.updateMany({
+          where: {
+            id: { in: orderIds }
+          },
+          data: { assignedToId }
+        })
+
+        await logOrderActivity(
+          "BULK_ASSIGNED",
+          `${assignedCount} orders assigned to ${assignedUser.username} by ${user.username}`,
+          request,
+          user.id,
+          undefined,
+          { orderIds, assignedToId, assignedCount }
+        )
+
+        result.assignedCount = assignedCount
+        break
+
+      case "export":
+        // Get orders for export
+        const orders = await prisma.order.findMany({
+          where: {
+            id: { in: orderIds }
+          },
+          include: {
+            items: {
+              include: {
+                product: {
+                  select: {
+                    name: true
+                  }
+                }
+              }
+            }
+          }
+        })
+
         // Create CSV content
-        const csvHeaders = "ID,Customer Name,Customer Email,Customer Phone,Status,Total Amount,Created At\n"
+        const csvHeaders = "ID,Customer Name,Customer Phone,Customer Email,Status,Total,Items,Created At\n"
         const csvRows = orders
-          .map(
-            (order) =>
-              `${order.id},"${order.customerName}","${order.customerEmail}","${order.customerPhone}","${order.status}",${order.totalAmount},"${order.createdAt}"`,
-          )
+          .map((order) => {
+            const itemsText = order.items.map(item => 
+              `${item.product?.name || 'Unknown'} (${item.quantity}x)`
+            ).join('; ')
+            
+            return `${order.id},"${order.customerName}","${order.customerPhone1}","${order.customerEmail || ''}","${order.status}",${order.total},"${itemsText}","${order.createdAt.toISOString()}"`
+          })
           .join("\n")
         const csvContent = csvHeaders + csvRows
 
         await logOrderActivity(
-          "ORDERS_EXPORTED",
+          "BULK_EXPORTED",
           `${orders.length} orders exported by ${user.username}`,
           request,
           user.id,
+          undefined,
+          { orderIds, exportedCount: orders.length }
         )
 
         return new NextResponse(csvContent, {
           headers: {
             "Content-Type": "text/csv",
-            "Content-Disposition": "attachment; filename=orders-export.csv",
+            "Content-Disposition": `attachment; filename=orders-export-${new Date().toISOString().split('T')[0]}.csv`,
           },
         })
 

@@ -1,7 +1,7 @@
-import type { User, Order, Product, UserActivity, Role, UserStatus, OrderStatus } from "@prisma/client"
+import type { User, Order, Product, Activity, Role, UserStatus, OrderStatus } from "@prisma/client"
 
 // Re-export Prisma types
-export type { User, Order, Product, UserActivity, Role, UserStatus, OrderStatus }
+export type { User, Order, Product, Activity, Role, UserStatus, OrderStatus }
 
 // Extended types for API responses
 export interface AuthUser extends User {

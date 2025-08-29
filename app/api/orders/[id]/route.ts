@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/auth-server"
 import prisma from "@/lib/prisma"
-import { logOrderActivity } from "@/lib/activity-logger"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -19,15 +18,118 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    const order = await prisma.findOrderById(params.id)
+    const order = await prisma.order.findUnique({
+      where: { id: params.id },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                nameEn: true,
+                nameFr: true,
+                price: true,
+                imageUrl: true
+              }
+            }
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            email: true
+          }
+        },
+        statusHistory: {
+          orderBy: {
+            createdAt: 'desc'
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        shipments: {
+          include: {
+            agency: {
+              select: {
+                id: true,
+                name: true
+              }
+            },
+            statusLogs: {
+              orderBy: {
+                timestamp: 'desc'
+              },
+              take: 10
+            }
+          }
+        }
+      }
+    })
 
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
+    // Check if user has permission to view this order
+    if (user.role === "STAFF" && order.assignedToId !== user.id) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+    }
+
+    // Format the order response
+    const formattedOrder = {
+      id: order.id,
+      customerName: order.customerName,
+      customerPhone1: order.customerPhone1,
+      customerPhone2: order.customerPhone2,
+      customerEmail: order.customerEmail,
+      customerAddress: order.customerAddress,
+      customerCity: order.customerCity,
+      status: order.status,
+      deliveryCompany: order.deliveryCompany,
+      total: Number(order.total),
+      deliveryPrice: order.deliveryPrice ? Number(order.deliveryPrice) : null,
+      notes: order.notes,
+      attemptCount: order.attemptCount,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      assignedTo: order.assignedTo,
+      items: order.items.map(item => ({
+        id: item.id,
+        quantity: item.quantity,
+        price: Number(item.price),
+        total: Number(item.price) * item.quantity,
+        product: item.product,
+        productId: item.productId
+      })),
+      statusHistory: order.statusHistory,
+      shipments: order.shipments.map(shipment => ({
+        id: shipment.id,
+        trackingNumber: shipment.trackingNumber,
+        barcode: shipment.barcode,
+        status: shipment.status,
+        lastStatusUpdate: shipment.lastStatusUpdate,
+        agency: shipment.agency,
+        statusLogs: shipment.statusLogs,
+        createdAt: shipment.createdAt,
+        updatedAt: shipment.updatedAt
+      }))
+    }
+
     console.log("✅ Order retrieved:", order.id)
 
-    return NextResponse.json({ order })
+    return NextResponse.json({ order: formattedOrder })
   } catch (error) {
     console.error("❌ Get order by ID API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -50,68 +152,156 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    const order = await prisma.findOrderById(params.id)
+    const order = await prisma.order.findUnique({
+      where: { id: params.id },
+      include: {
+        items: true
+      }
+    })
 
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
+    // Check permissions
+    if (user.role === "STAFF" && order.assignedToId !== user.id) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+    }
+
     const updateData = await request.json()
     console.log("Updating order:", order.id)
 
+    // Track what changed for status history
+    const oldStatus = order.status
+    const newStatus = updateData.status || order.status
+
     // Calculate new total if items are updated
-    const items = updateData.items || order.items
-    const itemsTotal = items.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0)
-    const deliveryPrice = updateData.deliveryPrice || 0
-    const totalAmount = itemsTotal + deliveryPrice
-
-    // Prepare update data
-    const orderUpdateData = {
-      customerName: updateData.customerName || order.customerName,
-      customerEmail: updateData.customerEmail || order.customerEmail,
-      customerPhone: updateData.customerPhone || order.customerPhone,
-      status: updateData.status || order.status,
-      totalAmount,
-      shippingAddress: updateData.customerAddress || order.shippingAddress,
-      notes: updateData.privateNote || order.notes,
-      items: items.map((item: any, index: number) => ({
-        id: item.id || `item-${Date.now()}-${index}`,
-        productName: item.productId || item.productName,
-        quantity: item.quantity,
-        price: item.price,
-        total: item.price * item.quantity,
-      })),
+    let totalAmount = Number(order.total)
+    if (updateData.items) {
+      const itemsTotal = updateData.items.reduce((sum: number, item: any) => 
+        sum + (item.price * item.quantity), 0
+      )
+      const deliveryPrice = updateData.deliveryPrice || 0
+      totalAmount = itemsTotal + deliveryPrice
     }
 
-    const updatedOrder = await prisma.updateOrder(params.id, orderUpdateData)
+    // Update order in a transaction
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      // Update the order
+      const updated = await tx.order.update({
+        where: { id: params.id },
+        data: {
+          customerName: updateData.customerName || order.customerName,
+          customerPhone1: updateData.customerPhone1 || order.customerPhone1,
+          customerPhone2: updateData.customerPhone2 !== undefined ? updateData.customerPhone2 : order.customerPhone2,
+          customerEmail: updateData.customerEmail !== undefined ? updateData.customerEmail : order.customerEmail,
+          customerAddress: updateData.customerAddress || order.customerAddress,
+          customerCity: updateData.customerCity || order.customerCity,
+          status: newStatus,
+          deliveryCompany: updateData.deliveryCompany !== undefined ? updateData.deliveryCompany : order.deliveryCompany,
+          total: totalAmount,
+          deliveryPrice: updateData.deliveryPrice !== undefined 
+            ? (updateData.deliveryPrice > 0 ? updateData.deliveryPrice : null)
+            : order.deliveryPrice,
+          notes: updateData.notes !== undefined ? updateData.notes : order.notes,
+          attemptCount: updateData.attemptCount !== undefined ? updateData.attemptCount : order.attemptCount,
+          assignedToId: updateData.assignedToId || order.assignedToId
+        }
+      })
 
-    if (!updatedOrder) {
-      return NextResponse.json({ error: "Failed to update order" }, { status: 500 })
-    }
+      // Update items if provided
+      if (updateData.items) {
+        // Delete existing items
+        await tx.orderItem.deleteMany({
+          where: { orderId: params.id }
+        })
 
-    // Log order update
-    await logOrderActivity("ORDER_UPDATED", `Order ${order.id} updated by ${user.username}`, request, user.id, order.id)
+        // Create new items
+        for (const item of updateData.items) {
+          await tx.orderItem.create({
+            data: {
+              orderId: params.id,
+              productId: item.productId,
+              quantity: item.quantity,
+              price: item.price
+            }
+          })
+        }
+      }
+
+      // Add status history if status changed
+      if (oldStatus !== newStatus) {
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId: params.id,
+            status: newStatus,
+            notes: updateData.statusNote || `Status changed from ${oldStatus} to ${newStatus}`,
+            userId: user.id
+          }
+        })
+      }
+
+      // Log activity
+      await tx.activity.create({
+        data: {
+          type: "ORDER_UPDATED",
+          description: `Order ${params.id} updated by ${user.username}`,
+          userId: user.id,
+          metadata: {
+            orderId: params.id,
+            changes: updateData,
+            oldStatus: oldStatus,
+            newStatus: newStatus
+          },
+          ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1",
+          userAgent: request.headers.get("user-agent") || "unknown"
+        }
+      })
+
+      return updated
+    })
+
+    // Fetch complete updated order
+    const completeOrder = await prisma.order.findUnique({
+      where: { id: params.id },
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true
+          }
+        },
+        statusHistory: {
+          orderBy: {
+            createdAt: 'desc'
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        }
+      }
+    })
 
     console.log("✅ Order updated:", updatedOrder.id)
 
     return NextResponse.json({
-      order: updatedOrder,
-      id: updatedOrder.id,
-      customerName: updatedOrder.customerName,
-      customerEmail: updatedOrder.customerEmail,
-      customerPhone: updatedOrder.customerPhone,
-      customerAddress: updatedOrder.shippingAddress,
-      customerCity: updateData.customerCity || "",
-      status: updatedOrder.status,
-      deliveryCompany: updateData.deliveryCompany,
-      deliveryPrice: deliveryPrice,
-      deliveryCost: updateData.deliveryCost || 0,
-      privateNote: updatedOrder.notes,
-      attemptCount: updateData.attemptCount || 0,
-      total: totalAmount,
-      items: updatedOrder.items,
-      createdAt: updatedOrder.createdAt,
-      updatedAt: updatedOrder.updatedAt,
+      success: true,
+      order: completeOrder,
+      message: "Order updated successfully"
     })
   } catch (error) {
     console.error("❌ Update order API error:", error)
@@ -135,24 +325,45 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
-    const order = await prisma.findOrderById(params.id)
+    const order = await prisma.order.findUnique({
+      where: { id: params.id }
+    })
 
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    const success = await prisma.deleteOrder(params.id)
+    // Delete order in transaction (cascade will handle related records)
+    await prisma.$transaction(async (tx) => {
+      // Log activity before deletion
+      await tx.activity.create({
+        data: {
+          type: "ORDER_DELETED",
+          description: `Order ${params.id} deleted by ${user.username}`,
+          userId: user.id,
+          metadata: {
+            orderId: params.id,
+            customerName: order.customerName,
+            status: order.status,
+            total: Number(order.total)
+          },
+          ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1",
+          userAgent: request.headers.get("user-agent") || "unknown"
+        }
+      })
 
-    if (!success) {
-      return NextResponse.json({ error: "Failed to delete order" }, { status: 500 })
-    }
-
-    // Log order deletion
-    await logOrderActivity("ORDER_DELETED", `Order ${order.id} deleted by ${user.username}`, request, user.id, order.id)
+      // Delete the order (cascade deletes related records)
+      await tx.order.delete({
+        where: { id: params.id }
+      })
+    })
 
     console.log("✅ Order deleted:", order.id)
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ 
+      success: true,
+      message: "Order deleted successfully"
+    })
   } catch (error) {
     console.error("❌ Delete order API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/auth-server"
 import prisma from "@/lib/prisma"
-import { logOrderActivity } from "@/lib/activity-logger"
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,35 +24,153 @@ export async function GET(request: NextRequest) {
     const page = Number.parseInt(searchParams.get("page") || "1")
     const limit = Number.parseInt(searchParams.get("limit") || "10")
 
-    // Get all orders (in a real app, you'd filter by user permissions)
-    const allOrders = await prisma.getAllOrders()
+    // Build where clause
+    let whereClause: any = {}
 
-    // Apply filters
-    let filteredOrders = allOrders
-
+    // Filter by status
     if (status && status !== "all") {
-      filteredOrders = filteredOrders.filter((order) => order.status === status)
+      whereClause.status = status
     }
 
+    // Search filter
     if (search) {
-      filteredOrders = filteredOrders.filter(
-        (order) => order.customerName.toLowerCase().includes(search.toLowerCase()) || order.id.includes(search),
-      )
+      whereClause.OR = [
+        {
+          customerName: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          customerPhone1: {
+            contains: search
+          }
+        },
+        {
+          customerEmail: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          id: {
+            contains: search
+          }
+        }
+      ]
     }
 
-    // Apply pagination
-    const startIndex = (page - 1) * limit
-    const paginatedOrders = filteredOrders.slice(startIndex, startIndex + limit)
+    // Role-based filtering
+    if (user.role === "STAFF") {
+      whereClause.assignedToId = user.id
+    }
 
-    console.log("✅ Retrieved", paginatedOrders.length, "orders")
+    // Get total count for pagination
+    const totalCount = await prisma.order.count({ where: whereClause })
+
+    // Get orders with pagination
+    const orders = await prisma.order.findMany({
+      where: whereClause,
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                nameEn: true,
+                nameFr: true,
+                imageUrl: true
+              }
+            }
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true
+          }
+        },
+        statusHistory: {
+          orderBy: {
+            createdAt: 'desc'
+          },
+          take: 5,
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        shipments: {
+          include: {
+            agency: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      skip: (page - 1) * limit,
+      take: limit
+    })
+
+    // Format orders for response
+    const formattedOrders = orders.map(order => ({
+      id: order.id,
+      customerName: order.customerName,
+      customerPhone1: order.customerPhone1,
+      customerPhone2: order.customerPhone2,
+      customerEmail: order.customerEmail,
+      customerAddress: order.customerAddress,
+      customerCity: order.customerCity,
+      status: order.status,
+      deliveryCompany: order.deliveryCompany,
+      total: Number(order.total),
+      deliveryPrice: order.deliveryPrice ? Number(order.deliveryPrice) : null,
+      notes: order.notes,
+      attemptCount: order.attemptCount,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      assignedTo: order.assignedTo,
+      items: order.items.map(item => ({
+        id: item.id,
+        quantity: item.quantity,
+        price: Number(item.price),
+        product: item.product,
+        productId: item.productId
+      })),
+      statusHistory: order.statusHistory,
+      shipments: order.shipments.map(shipment => ({
+        id: shipment.id,
+        trackingNumber: shipment.trackingNumber,
+        status: shipment.status,
+        agency: shipment.agency,
+        createdAt: shipment.createdAt
+      }))
+    }))
+
+    console.log("✅ Retrieved", formattedOrders.length, "orders")
 
     return NextResponse.json({
-      orders: paginatedOrders,
+      orders: formattedOrders,
       pagination: {
         page,
         limit,
-        total: filteredOrders.length,
-        pages: Math.ceil(filteredOrders.length / limit),
+        total: totalCount,
+        pages: Math.ceil(totalCount / limit),
       },
     })
   } catch (error) {
@@ -82,68 +199,122 @@ export async function POST(request: NextRequest) {
     console.log("Creating order for customer:", orderData.customerName)
 
     // Validate required fields
-    if (!orderData.customerName || !orderData.customerPhone || !orderData.customerAddress) {
+    if (!orderData.customerName || !orderData.customerPhone1 || !orderData.customerAddress) {
       return NextResponse.json({ error: "Customer name, phone, and address are required" }, { status: 400 })
     }
 
-    // Calculate total from items
+    // Validate items
     const items = orderData.items || []
-    const itemsTotal = items.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0)
+    if (items.length === 0) {
+      return NextResponse.json({ error: "At least one item is required" }, { status: 400 })
+    }
+
+    // Calculate total from items
+    const itemsTotal = items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0)
     const deliveryPrice = orderData.deliveryPrice || 0
     const totalAmount = itemsTotal + deliveryPrice
 
-    // Create order
-    const newOrder = await prisma.createOrder({
-      customerName: orderData.customerName,
-      customerEmail: orderData.customerEmail || "",
-      customerPhone: orderData.customerPhone,
-      items: items.map((item: any) => ({
-        id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        productName: item.productId, // In a real app, you'd look up the product name
-        quantity: item.quantity,
-        price: item.price,
-        total: item.price * item.quantity,
-      })),
-      status: orderData.status || "PENDING",
-      totalAmount,
-      shippingAddress: orderData.customerAddress,
-      notes: orderData.privateNote || "",
-      createdBy: user.id,
+    // Create order with items in a transaction
+    const newOrder = await prisma.$transaction(async (tx) => {
+      // Create the order
+      const order = await tx.order.create({
+        data: {
+          customerName: orderData.customerName,
+          customerPhone1: orderData.customerPhone1,
+          customerPhone2: orderData.customerPhone2 || null,
+          customerEmail: orderData.customerEmail || null,
+          customerAddress: orderData.customerAddress,
+          customerCity: orderData.customerCity || "",
+          status: orderData.status || "PENDING",
+          deliveryCompany: orderData.deliveryCompany || null,
+          total: totalAmount,
+          deliveryPrice: deliveryPrice > 0 ? deliveryPrice : null,
+          notes: orderData.notes || null,
+          assignedToId: orderData.assignedToId || user.id,
+        }
+      })
+
+      // Create order items
+      for (const item of items) {
+        await tx.orderItem.create({
+          data: {
+            orderId: order.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            price: item.price
+          }
+        })
+      }
+
+      // Create initial status history entry
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          status: order.status,
+          notes: "Order created",
+          userId: user.id
+        }
+      })
+
+      // Log activity
+      await tx.activity.create({
+        data: {
+          type: "ORDER_CREATED",
+          description: `Order ${order.id} created for ${orderData.customerName}`,
+          userId: user.id,
+          metadata: {
+            orderId: order.id,
+            customerName: orderData.customerName,
+            total: totalAmount
+          },
+          ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1",
+          userAgent: request.headers.get("user-agent") || "unknown"
+        }
+      })
+
+      return order
     })
 
-    // Log order creation
-    await logOrderActivity(
-      "ORDER_CREATED",
-      `Order ${newOrder.id} created for ${orderData.customerName}`,
-      request,
-      user.id,
-      newOrder.id,
-    )
+    // Fetch the complete order with relations
+    const completeOrder = await prisma.order.findUnique({
+      where: { id: newOrder.id },
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true
+          }
+        },
+        statusHistory: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        }
+      }
+    })
 
     console.log("✅ Order created:", newOrder.id)
 
-    return NextResponse.json(
-      {
-        order: newOrder,
-        id: newOrder.id,
-        customerName: newOrder.customerName,
-        customerEmail: newOrder.customerEmail,
-        customerPhone: newOrder.customerPhone,
-        customerAddress: newOrder.shippingAddress,
-        customerCity: orderData.customerCity || "",
-        status: newOrder.status,
-        deliveryCompany: orderData.deliveryCompany,
-        deliveryPrice: deliveryPrice,
-        deliveryCost: orderData.deliveryCost || 0,
-        privateNote: newOrder.notes,
-        attemptCount: orderData.attemptCount || 0,
-        total: totalAmount,
-        items: newOrder.items,
-        createdAt: newOrder.createdAt,
-        updatedAt: newOrder.updatedAt,
-      },
-      { status: 201 },
-    )
+    return NextResponse.json({
+      success: true,
+      order: completeOrder,
+      message: "Order created successfully"
+    }, { status: 201 })
+
   } catch (error) {
     console.error("❌ Create order API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

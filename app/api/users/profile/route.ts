@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/auth-server"
 import prisma from "@/lib/prisma"
-import { logUserActivity } from "@/lib/activity-logger"
 
 export async function PUT(request: NextRequest) {
   try {
@@ -20,7 +19,6 @@ export async function PUT(request: NextRequest) {
     }
 
     const profileData = await request.json()
-    console.log("Updating profile for user:", user.username)
 
     // Validate required fields
     if (!profileData.firstName || !profileData.lastName || !profileData.email) {
@@ -29,35 +27,65 @@ export async function PUT(request: NextRequest) {
 
     // Check if email is already taken by another user
     if (profileData.email !== user.email) {
-      const existingUser = await prisma.findUserByEmail(profileData.email)
-      if (existingUser && existingUser.id !== user.id) {
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email: profileData.email,
+          id: { not: user.id }
+        }
+      })
+      if (existingUser) {
         return NextResponse.json({ error: "Email is already taken" }, { status: 400 })
       }
     }
 
-    // Update user profile
-    const updatedUser = await prisma.updateUser(user.id, {
-      firstName: profileData.firstName,
-      lastName: profileData.lastName,
-      email: profileData.email,
-      phone: profileData.phone,
-      username: profileData.username || user.username,
+    // Update user profile in transaction
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id: user.id },
+        data: {
+          firstName: profileData.firstName,
+          lastName: profileData.lastName,
+          email: profileData.email,
+          phone: profileData.phone || null,
+          username: profileData.username || user.username,
+        },
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      })
+
+      // Log profile update
+      await tx.activity.create({
+        data: {
+          type: "PROFILE_UPDATED",
+          description: `Profile updated by ${user.username}`,
+          userId: user.id,
+          metadata: {
+            changes: profileData
+          },
+          ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1",
+          userAgent: request.headers.get("user-agent") || "unknown"
+        }
+      })
+
+      return updated
     })
-
-    if (!updatedUser) {
-      return NextResponse.json({ error: "Failed to update profile" }, { status: 500 })
-    }
-
-    // Log profile update
-    await logUserActivity("PROFILE_UPDATED", `Profile updated by ${user.username}`, request, user.id, {
-      changes: profileData,
-    })
-
-    // Remove password from response
-    const { password, ...safeUser } = updatedUser
 
     console.log("✅ Profile updated successfully")
-    return NextResponse.json({ user: safeUser })
+    return NextResponse.json({ 
+      success: true,
+      user: updatedUser,
+      message: "Profile updated successfully"
+    })
   } catch (error) {
     console.error("❌ Update profile API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

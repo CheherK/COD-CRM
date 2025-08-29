@@ -1,27 +1,79 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { extractUserFromRequest, createUser } from "@/lib/auth-server"
-import { logUserActivity } from "@/lib/activity-logger"
+import { verifyToken } from "@/lib/auth-server"
 import prisma from "@/lib/prisma"
+import bcrypt from "bcryptjs"
 
 export async function GET(request: NextRequest) {
   try {
     console.log("=== GET USERS API CALLED ===")
 
-    const currentUser = await extractUserFromRequest(request)
+    const token = request.cookies.get("auth-token")?.value
 
-    if (!currentUser) {
-      console.log("❌ No valid user found in request")
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!token) {
+      console.log("❌ No token provided")
+      return NextResponse.json({ error: "No token provided" }, { status: 401 })
+    }
+
+    const user = verifyToken(token)
+
+    if (!user) {
+      console.log("❌ Invalid token")
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
     // Only admins can get all users
-    if (currentUser.role !== "ADMIN") {
-      console.log("❌ User not admin:", currentUser.username)
+    if (user.role !== "ADMIN") {
+      console.log("❌ User not admin:", user.username)
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
+    const { searchParams } = new URL(request.url)
+    const status = searchParams.get("status")
+    const role = searchParams.get("role")
+    const search = searchParams.get("search")
+
+    // Build where clause
+    let whereClause: any = {}
+
+    if (status && status !== "all") {
+      whereClause.status = status
+    }
+
+    if (role && role !== "all") {
+      whereClause.role = role
+    }
+
+    if (search) {
+      whereClause.OR = [
+        {
+          username: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          email: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          firstName: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          lastName: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        }
+      ]
+    }
+
     const users = await prisma.user.findMany({
-      where: { status: "ENABLED" },
+      where: whereClause,
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -34,14 +86,21 @@ export async function GET(request: NextRequest) {
         status: true,
         createdAt: true,
         updatedAt: true,
+        _count: {
+          select: {
+            orders: true,
+            activities: true
+          }
+        }
       },
     })
 
-    console.log("✅ Retrieved", users.length, "users for admin:", currentUser.username)
+    console.log("✅ Retrieved", users.length, "users for admin:", user.username)
 
     return NextResponse.json({
       success: true,
       users,
+      total: users.length
     })
   } catch (error) {
     console.error("❌ Get users API error:", error)
@@ -53,14 +112,20 @@ export async function POST(request: NextRequest) {
   try {
     console.log("=== CREATE USER API CALLED ===")
 
-    const currentUser = await extractUserFromRequest(request)
+    const token = request.cookies.get("auth-token")?.value
 
-    if (!currentUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!token) {
+      return NextResponse.json({ error: "No token provided" }, { status: 401 })
+    }
+
+    const user = verifyToken(token)
+
+    if (!user) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
     // Only admins can create users
-    if (currentUser.role !== "ADMIN") {
+    if (user.role !== "ADMIN") {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
@@ -72,42 +137,92 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Username, email, and password are required" }, { status: 400 })
     }
 
+    // Validate password strength
+    if (password.length < 6) {
+      return NextResponse.json({ error: "Password must be at least 6 characters long" }, { status: 400 })
+    }
+
+    // Validate role
+    if (!["ADMIN", "STAFF"].includes(role)) {
+      return NextResponse.json({ error: "Invalid role. Must be ADMIN or STAFF" }, { status: 400 })
+    }
+
     // Check if user already exists
     const existingUser = await prisma.user.findFirst({
       where: {
-        OR: [{ username }, { email }],
+        OR: [
+          { username },
+          { email }
+        ],
       },
     })
 
     if (existingUser) {
-      return NextResponse.json({ error: "User with this username or email already exists" }, { status: 400 })
+      return NextResponse.json({ 
+        error: existingUser.username === username 
+          ? "Username already exists" 
+          : "Email already exists" 
+      }, { status: 400 })
     }
 
-    // Create user
-    const newUser = await createUser({
-      username,
-      email,
-      password,
-      firstName,
-      lastName,
-      phone,
-      role: role as "ADMIN" | "STAFF",
-    })
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12)
 
-    // Log activity
-    await logUserActivity("CREATE_USER", `Created new user: ${newUser.username}`, request, currentUser.id, {
-      createdUserId: newUser.id,
+    // Create user in transaction
+    const newUser = await prisma.$transaction(async (tx) => {
+      // Create the user
+      const createdUser = await tx.user.create({
+        data: {
+          username,
+          email,
+          password: hashedPassword,
+          firstName: firstName || null,
+          lastName: lastName || null,
+          phone: phone || null,
+          role: role as "ADMIN" | "STAFF",
+          status: "ENABLED"
+        },
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      })
+
+      // Log activity
+      await tx.activity.create({
+        data: {
+          type: "USER_CREATED",
+          description: `User ${username} created by ${user.username}`,
+          userId: user.id,
+          metadata: {
+            createdUserId: createdUser.id,
+            createdUsername: username,
+            role: role
+          },
+          ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1",
+          userAgent: request.headers.get("user-agent") || "unknown"
+        }
+      })
+
+      return createdUser
     })
 
     console.log("✅ User created successfully:", newUser.username)
 
-    // Remove password from response
-    const { password: _, ...safeUser } = newUser
-
     return NextResponse.json({
       success: true,
-      user: safeUser,
-    })
+      user: newUser,
+      message: "User created successfully"
+    }, { status: 201 })
+
   } catch (error) {
     console.error("❌ Create user API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

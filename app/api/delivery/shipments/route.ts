@@ -1,6 +1,11 @@
+// app/api/delivery/shipments/route.ts
+// Updated to handle Order -> DeliveryShipment creation with proper field mapping
+
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth-server';
 import { deliveryService } from '@/lib/delivery/delivery-service';
+import prisma from '@/lib/prisma';
+import type { DeliveryOrder } from '@/lib/delivery/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -44,13 +49,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    const { orderId, agencyId, order } = await request.json();
+    const { orderId, agencyId } = await request.json();
 
-    if (!orderId || !agencyId || !order) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    if (!orderId || !agencyId) {
+      return NextResponse.json({ error: 'Missing orderId or agencyId' }, { status: 400 });
     }
 
-    const result = await deliveryService.createShipment(orderId, agencyId, order, request, user.id);
+    // Fetch the order from database
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    // Check if order is CONFIRMED (only confirmed orders can be shipped)
+    if (order.status !== 'CONFIRMED') {
+      return NextResponse.json({ 
+        error: `Cannot ship order with status ${order.status}. Order must be CONFIRMED.` 
+      }, { status: 400 });
+    }
+
+    // Transform Order to DeliveryOrder format
+    const deliveryOrder: DeliveryOrder = {
+      customerName: order.customerName,
+      customerPhone: order.customerPhone1, // Use primary phone
+      customerPhone2: order.customerPhone2 || undefined,
+      customerCity: order.customerCity,
+      customerAddress: order.customerAddress,
+      productName: order.items.map(item => 
+        `${item.product.name} (x${item.quantity})`
+      ).join(', '),
+      price: Number(order.total),
+      notes: order.notes || undefined,
+    };
+
+    // Create shipment
+    const result = await deliveryService.createShipment(
+      orderId, 
+      agencyId, 
+      deliveryOrder, 
+      request, 
+      user.id
+    );
 
     return NextResponse.json(result);
   } catch (error) {

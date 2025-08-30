@@ -1,3 +1,6 @@
+// lib/delivery/agencies/best-delivery.ts
+// Updated to properly map Best Delivery numeric statuses to DeliveryStatus enum
+
 import { BaseDeliveryAgency } from '../base-agency';
 import type {
   DeliveryCredentials,
@@ -5,11 +8,10 @@ import type {
   DeliveryOrderResponse,
   DeliveryTrackingResponse,
   DeliveryStatus,
-  StandardStatus,
+  DeliveryStatusEnum,
 } from '../types';
-import { STANDARD_STATUSES } from '../types';
+import { DELIVERY_STATUSES } from '../types';
 
-  
 interface BestDeliveryResponse {
   HasErrors: number;
   ErrorsTxt: string;
@@ -38,6 +40,30 @@ export class BestDeliveryAgency extends BaseDeliveryAgency {
 
   private readonly apiUrl = 'https://api.best-delivery.net/serviceShipments.php';
 
+  // Best Delivery specific status mapping
+  protected getStatusMappingTable(): Record<number, DeliveryStatusEnum> {
+    return {
+      0: DELIVERY_STATUSES.UPLOADED,     // Pending/Created
+      1: DELIVERY_STATUSES.UPLOADED,     // Confirmed  
+      2: DELIVERY_STATUSES.UPLOADED,     // Ready for pickup
+      3: DELIVERY_STATUSES.DEPOSIT,      // Picked up by agency
+      4: DELIVERY_STATUSES.IN_TRANSIT,   // In transit to destination
+      5: DELIVERY_STATUSES.IN_TRANSIT,   // Arrived at destination hub
+      6: DELIVERY_STATUSES.IN_TRANSIT,   // Out for delivery
+      7: DELIVERY_STATUSES.DELIVERED,    // Successfully delivered
+      8: DELIVERY_STATUSES.RETURNED,     // Delivery failed
+      9: DELIVERY_STATUSES.RETURNED,     // Returned to sender
+      10: DELIVERY_STATUSES.RETURNED,    // Cancelled
+    };
+  }
+
+  protected mapAgencyStatusToDeliveryStatus(agencyStatus: string | number): DeliveryStatusEnum {
+    const statusCode = typeof agencyStatus === 'string' ? parseInt(agencyStatus) : agencyStatus;
+    const mappingTable = this.getStatusMappingTable();
+    
+    return mappingTable[statusCode] || DELIVERY_STATUSES.UPLOADED;
+  }
+
   async createOrder(order: DeliveryOrder, credentials: DeliveryCredentials): Promise<DeliveryOrderResponse> {
     this.log('info', 'Creating order', { customer: order.customerName, price: order.price });
 
@@ -63,9 +89,9 @@ export class BestDeliveryAgency extends BaseDeliveryAgency {
     <CreatePickup xmlns="http://tempuri.org/">
       <pickup>
         <nom>${this.escapeXml(order.customerName)}</nom>
-        <gouvernerat>${this.escapeXml(order.governorate)}</gouvernerat>
-        <ville>${this.escapeXml(order.city)}</ville>
-        <adresse>${this.escapeXml(order.address)}</adresse>
+        <gouvernerat>${this.escapeXml(order.customerCity)}</gouvernerat>
+        <ville>${this.escapeXml(order.customerCity)}</ville>
+        <adresse>${this.escapeXml(order.customerAddress)}</adresse>
         <tel>${this.escapeXml(order.customerPhone)}</tel>
         <tel2>${this.escapeXml(order.customerPhone2 || '')}</tel2>
         <designation>${this.escapeXml(order.productName)}</designation>
@@ -173,12 +199,12 @@ export class BestDeliveryAgency extends BaseDeliveryAgency {
         };
       }
 
-      const standardStatus = this.mapAgencyStatus(result.status || 0);
+      const deliveryStatus = this.mapAgencyStatusToDeliveryStatus(result.status || 0);
 
       const status: DeliveryStatus = {
         trackingNumber: result.tracking_number || trackingNumber,
-        status: standardStatus,
-        message: result.message || `Status: ${standardStatus}`,
+        status: deliveryStatus,
+        message: result.message || `Status: ${deliveryStatus}`,
         lastUpdated: new Date(),
       };
 
@@ -249,36 +275,6 @@ export class BestDeliveryAgency extends BaseDeliveryAgency {
         success: false,
         error: error instanceof Error ? error.message : 'Connection failed',
       };
-    }
-  }
-
-  protected mapAgencyStatus(agencyStatus: string | number): StandardStatus {
-    // Best Delivery status codes based on their system
-    const statusCode = typeof agencyStatus === 'string' ? parseInt(agencyStatus) : agencyStatus;
-
-    switch (statusCode) {
-      case 0:
-      case 1:
-        return STANDARD_STATUSES.PENDING;
-      case 2:
-        return STANDARD_STATUSES.CONFIRMED;
-      case 3:
-        return STANDARD_STATUSES.PICKED_UP;
-      case 4:
-      case 5:
-        return STANDARD_STATUSES.IN_TRANSIT;
-      case 6:
-        return STANDARD_STATUSES.OUT_FOR_DELIVERY;
-      case 7:
-        return STANDARD_STATUSES.DELIVERED;
-      case 8:
-        return STANDARD_STATUSES.FAILED;
-      case 9:
-        return STANDARD_STATUSES.RETURNED;
-      case 10:
-        return STANDARD_STATUSES.CANCELLED;
-      default:
-        return STANDARD_STATUSES.PENDING;
     }
   }
 

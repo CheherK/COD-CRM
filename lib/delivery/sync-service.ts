@@ -1,3 +1,6 @@
+// lib/delivery/sync-service.ts
+// Updated to use correct DeliveryStatus enum and handle active shipments properly
+
 import { deliveryService } from './delivery-service'
 import prisma from '@/lib/prisma'
 import type { SyncResult } from './types'
@@ -35,13 +38,16 @@ export class DeliverySyncService {
     }
 
     try {
-      // Get active shipments
+      // Get active shipments (not yet delivered or returned)
       const activeShipments = await prisma.deliveryShipment.findMany({
         where: {
           status: {
-            in: ['PENDING', 'CONFIRMED', 'PICKED_UP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY'],
+            in: ['UPLOADED', 'DEPOSIT', 'IN_TRANSIT'], // Only sync active statuses
           },
         },
+        orderBy: {
+          lastStatusUpdate: 'asc', // Sync oldest first
+        }
       })
 
       console.log(`📦 Found ${activeShipments.length} active shipments`)
@@ -61,19 +67,20 @@ export class DeliverySyncService {
             }
           } else {
             result.errors++
-            console.warn(`⚠️ Failed to sync ${shipment.trackingNumber}`)
+            console.warn(`⚠️ Failed to sync ${shipment.trackingNumber}: ${trackingResult.error}`)
           }
 
-          // Rate limiting
-          await new Promise((resolve) => setTimeout(resolve, 500))
         } catch (error) {
           result.errors++
           console.error(`❌ Error syncing ${shipment.trackingNumber}:`, error)
         }
+
+        // Rate limiting - 500ms between requests
+        await new Promise((resolve) => setTimeout(resolve, 500))
       }
 
       result.duration = Date.now() - startTime
-      console.log(`✅ Sync completed: ${result.processed} processed, ${result.updated} updated, ${result.errors} errors`)
+      console.log(`✅ Sync completed: ${result.processed} processed, ${result.updated} updated, ${result.errors} errors in ${result.duration}ms`)
 
       return result
     } catch (error) {
@@ -97,6 +104,69 @@ export class DeliverySyncService {
     }
   }
 
+  public async syncShipmentsByStatus(
+    status: 'UPLOADED' | 'DEPOSIT' | 'IN_TRANSIT'
+  ): Promise<SyncResult> {
+    if (this.isRunning) {
+      throw new Error('Sync already in progress')
+    }
+
+    console.log(`🔄 Starting sync for ${status} shipments...`)
+
+    const startTime = Date.now()
+    this.isRunning = true
+
+    const result: SyncResult = {
+      processed: 0,
+      updated: 0,
+      errors: 0,
+      duration: 0,
+    }
+
+    try {
+      const shipments = await prisma.deliveryShipment.findMany({
+        where: { status },
+        orderBy: { lastStatusUpdate: 'asc' }
+      })
+
+      console.log(`📦 Found ${shipments.length} shipments with status ${status}`)
+      result.processed = shipments.length
+
+      for (const shipment of shipments) {
+        try {
+          const oldStatus = shipment.status
+          const trackingResult = await deliveryService.trackShipment(shipment.id)
+
+          if (trackingResult.success && trackingResult.status) {
+            const newStatus = trackingResult.status.status
+
+            if (oldStatus !== newStatus) {
+              result.updated++
+              console.log(`📝 ${shipment.trackingNumber}: ${oldStatus} → ${newStatus}`)
+            }
+          } else {
+            result.errors++
+          }
+        } catch (error) {
+          result.errors++
+          console.error(`❌ Error syncing ${shipment.trackingNumber}:`, error)
+        }
+
+        // Rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+
+      result.duration = Date.now() - startTime
+      return result
+    } catch (error) {
+      result.duration = Date.now() - startTime
+      console.error('❌ Status-based sync failed:', error)
+      throw error
+    } finally {
+      this.isRunning = false
+    }
+  }
+
   public getStatus(): {
     isRunning: boolean
     lastSync: Date | null
@@ -105,6 +175,24 @@ export class DeliverySyncService {
       isRunning: this.isRunning,
       lastSync: this.lastSync,
     }
+  }
+
+  public async getStaleShipments(hoursOld: number = 2): Promise<any[]> {
+    const cutoffTime = new Date(Date.now() - (hoursOld * 60 * 60 * 1000))
+    
+    return prisma.deliveryShipment.findMany({
+      where: {
+        status: {
+          in: ['UPLOADED', 'DEPOSIT', 'IN_TRANSIT']
+        },
+        lastStatusUpdate: {
+          lt: cutoffTime
+        }
+      },
+      orderBy: {
+        lastStatusUpdate: 'asc'
+      }
+    })
   }
 }
 

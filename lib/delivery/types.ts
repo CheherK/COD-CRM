@@ -1,4 +1,6 @@
-// Core delivery system types and interfaces
+// lib/delivery/types.ts
+// Updated to match Prisma schema and separate order vs delivery status
+
 export interface DeliveryCredentials {
   type: 'username_password' | 'email_password' | 'api_key';
   username?: string;
@@ -11,9 +13,8 @@ export interface DeliveryOrder {
   customerName: string;
   customerPhone: string;
   customerPhone2?: string;
-  governorate: string;
-  city: string;
-  address: string;
+  customerCity: string; // Updated to match schema
+  customerAddress: string; // Updated field name
   productName: string;
   price: number;
   notes?: string;
@@ -29,14 +30,14 @@ export interface DeliveryOrderResponse {
 
 export interface DeliveryStatus {
   trackingNumber: string;
-  status: string;
+  status: DeliveryStatusEnum; // Use the enum from schema
   message: string;
   lastUpdated: Date;
   history?: DeliveryStatusHistory[];
 }
 
 export interface DeliveryStatusHistory {
-  status: string;
+  status: DeliveryStatusEnum;
   message: string;
   date: Date;
 }
@@ -58,29 +59,25 @@ export interface IDeliveryAgency {
   testConnection(credentials: DeliveryCredentials): Promise<{ success: boolean; error?: string; }>;
 }
 
-// Standard status mapping
-export const STANDARD_STATUSES = {
-  PENDING: 'PENDING',
-  CONFIRMED: 'CONFIRMED',
-  PICKED_UP: 'PICKED_UP',
+// Delivery status mapping - matches Prisma enum
+export const DELIVERY_STATUSES = {
+  UPLOADED: 'UPLOADED',
+  DEPOSIT: 'DEPOSIT', 
   IN_TRANSIT: 'IN_TRANSIT',
-  OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
   DELIVERED: 'DELIVERED',
-  FAILED: 'FAILED',
-  RETURNED: 'RETURNED',
-  CANCELLED: 'CANCELLED'
+  RETURNED: 'RETURNED'
 } as const;
 
-export type StandardStatus = typeof STANDARD_STATUSES[keyof typeof STANDARD_STATUSES];
+export type DeliveryStatusEnum = typeof DELIVERY_STATUSES[keyof typeof DELIVERY_STATUSES];
 
-// Database models (matching Prisma schema)
+// Database models (matching Prisma schema exactly)
 export interface DeliveryShipment {
   id: string;
   orderId: string;
   agencyId: string;
   trackingNumber: string;
   barcode?: string;
-  status: string;
+  status: DeliveryStatusEnum; // Updated to use correct enum
   lastStatusUpdate: Date;
   printUrl?: string;
   metadata?: Record<string, any>;

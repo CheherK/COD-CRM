@@ -1,10 +1,13 @@
+// lib/delivery/base-agency.ts
+// Updated to properly map agency statuses to delivery statuses
+
 import type {
   IDeliveryAgency,
   DeliveryCredentials,
   DeliveryOrder,
   DeliveryOrderResponse,
   DeliveryTrackingResponse,
-  StandardStatus
+  DeliveryStatusEnum
 } from './types'
 
 export abstract class BaseDeliveryAgency implements IDeliveryAgency {
@@ -17,8 +20,24 @@ export abstract class BaseDeliveryAgency implements IDeliveryAgency {
   abstract trackOrder(trackingNumber: string, credentials: DeliveryCredentials): Promise<DeliveryTrackingResponse>
   abstract testConnection(credentials: DeliveryCredentials): Promise<{ success: boolean; error?: string }>
   
-  // Status mapping - each agency implements their own
-  protected abstract mapAgencyStatus(agencyStatus: string | number): StandardStatus
+  // Status mapping - each agency implements their own mapping logic
+  protected abstract mapAgencyStatusToDeliveryStatus(agencyStatus: string | number): DeliveryStatusEnum
+
+  // Status mapping helper - agencies can override this for complex mappings
+  protected getStatusMappingTable(): Record<string | number, DeliveryStatusEnum> {
+    // Default mapping - agencies should override this
+    return {
+      'pending': 'UPLOADED',
+      'confirmed': 'UPLOADED', 
+      'picked_up': 'DEPOSIT',
+      'in_transit': 'IN_TRANSIT',
+      'out_for_delivery': 'IN_TRANSIT',
+      'delivered': 'DELIVERED',
+      'failed': 'RETURNED',
+      'returned': 'RETURNED',
+      'cancelled': 'RETURNED'
+    };
+  }
 
   // Common validation methods
   protected validateCredentials(credentials: DeliveryCredentials): { valid: boolean; errors: string[] } {
@@ -48,9 +67,8 @@ export abstract class BaseDeliveryAgency implements IDeliveryAgency {
 
     if (!order.customerName?.trim()) errors.push('Customer name is required')
     if (!order.customerPhone?.trim()) errors.push('Customer phone is required')
-    if (!order.governorate?.trim()) errors.push('Governorate is required')
-    if (!order.city?.trim()) errors.push('City is required')
-    if (!order.address?.trim()) errors.push('Address is required')
+    if (!order.customerCity?.trim()) errors.push('Customer city is required') // Updated field name
+    if (!order.customerAddress?.trim()) errors.push('Customer address is required') // Updated field name
     if (!order.productName?.trim()) errors.push('Product name is required')
     if (!order.price || order.price <= 0) errors.push('Valid price is required')
 
@@ -60,9 +78,9 @@ export abstract class BaseDeliveryAgency implements IDeliveryAgency {
       errors.push('Invalid phone number format')
     }
 
-    // Check supported regions
-    if (order.governorate && !this.supportedRegions.includes(order.governorate)) {
-      errors.push(`Region ${order.governorate} is not supported by ${this.name}`)
+    // Check supported regions - using customerCity now
+    if (order.customerCity && !this.supportedRegions.includes(order.customerCity)) {
+      errors.push(`City ${order.customerCity} is not supported by ${this.name}`)
     }
 
     return { valid: errors.length === 0, errors }

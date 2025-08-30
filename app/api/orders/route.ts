@@ -21,10 +21,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
     const search = searchParams.get("search")
+    const date = searchParams.get("date")
     const page = Number.parseInt(searchParams.get("page") || "1")
-    const limit = Number.parseInt(searchParams.get("limit") || "10")
+    const limit = Number.parseInt(searchParams.get("limit") || "20")
 
-    // Build where clause
+    // Build where clause with improved search functionality
     let whereClause: any = {}
 
     // Filter by status
@@ -32,32 +33,80 @@ export async function GET(request: NextRequest) {
       whereClause.status = status
     }
 
-    // Search filter
+    // Enhanced search filter - prioritize phone, product, and customer name
     if (search) {
+      const searchTerm = search.toLowerCase()
       whereClause.OR = [
+        // Search by phone numbers (primary priority)
+        {
+          customerPhone1: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          customerPhone2: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        // Search by customer name
         {
           customerName: {
             contains: search,
             mode: 'insensitive'
           }
         },
+        // Search by order ID
         {
-          customerPhone1: {
-            contains: search
-          }
-        },
-        {
-          customerEmail: {
+          id: {
             contains: search,
             mode: 'insensitive'
           }
         },
+        // Search by product name through items relation
         {
-          id: {
-            contains: search
+          items: {
+            some: {
+              product: {
+                OR: [
+                  {
+                    name: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    nameEn: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    nameFr: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  }
+                ]
+              }
+            }
           }
         }
       ]
+    }
+
+    // Date filter - search by specific date
+    if (date) {
+      const startDate = new Date(date)
+      startDate.setHours(0, 0, 0, 0)
+      const endDate = new Date(date)
+      endDate.setHours(23, 59, 59, 999)
+      
+      whereClause.createdAt = {
+        gte: startDate,
+        lte: endDate
+      }
     }
 
     // Role-based filtering
@@ -97,7 +146,6 @@ export async function GET(request: NextRequest) {
           orderBy: {
             createdAt: 'desc'
           },
-          take: 5,
           include: {
             user: {
               select: {
@@ -178,7 +226,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
-
 export async function POST(request: NextRequest) {
   try {
     console.log("=== CREATE ORDER API CALLED ===")

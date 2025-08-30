@@ -1,5 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Prisma schema file
 
 generator client {
   provider = "prisma-client-js"
@@ -11,45 +10,45 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  username    String   @unique
-  email       String   @unique
-  password    String
-  firstName   String?
-  lastName    String?
-  phone       String?
-  role        Role     @default(STAFF)
-  permissions Json?
-  status      UserStatus @default(ENABLED)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String              @id @default(cuid())
+  username      String              @unique
+  email         String              @unique
+  password      String
+  firstName     String?
+  lastName      String?
+  phone         String?
+  role          Role                @default(STAFF)
+  permissions   Json?
+  status        UserStatus          @default(ENABLED)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
-  orders      Order[]
-  activities  Activity[]
+  orders        Order[]
+  activities    Activity[]
   statusHistory OrderStatusHistory[]
 
   @@map("users")
 }
 
 model Order {
-  id              String      @id @default(cuid())
+  id              String              @id @default(cuid())
   customerName    String
-  customerPhone1  String      // Primary phone (mandatory)
-  customerPhone2  String?     // Secondary phone (optional)
+  customerPhone1  String              // Primary phone (mandatory)
+  customerPhone2  String?             // Secondary phone (optional)
   customerEmail   String?
   customerAddress String
   customerCity    String
-  status          OrderStatus @default(PENDING)
+  status          OrderStatus         @default(PENDING)
   deliveryCompany String?
-  total           Decimal     @db.Decimal(10, 2)
-  deliveryPrice   Decimal?    @db.Decimal(10, 2)
+  total           Decimal             @db.Decimal(10, 2)
+  deliveryPrice   Decimal?            @db.Decimal(10, 2)
   notes           String?
-  attemptCount    Int         @default(0)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  attemptCount    Int                 @default(0) // number of call attempts
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   items           OrderItem[]
-  assignedTo      User?       @relation(fields: [assignedToId], references: [id])
+  assignedTo      User?               @relation(fields: [assignedToId], references: [id])
   assignedToId    String?
   statusHistory   OrderStatusHistory[]
   shipments       DeliveryShipment[]
@@ -58,16 +57,16 @@ model Order {
 }
 
 model Product {
-  id          String @id @default(cuid())
-  shopifyId   String @unique  // Shopify product ID for sync
+  id          String    @id @default(cuid())
+  shopifyId   String    @unique // Shopify product ID for sync
   name        String
   nameEn      String
   nameFr      String
-  price       Decimal @db.Decimal(10, 2)
+  price       Decimal   @db.Decimal(10, 2)
   imageUrl    String?
-  isActive    Boolean @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   orderItems  OrderItem[]
 
@@ -75,30 +74,30 @@ model Product {
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
+  id        String   @id @default(cuid())
   quantity  Int
-  price     Decimal @db.Decimal(10, 2)
+  price     Decimal  @db.Decimal(10, 2)
 
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   orderId   String
-  product   Product @relation(fields: [productId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
   productId String
 
   @@map("order_items")
 }
 
 model Activity {
-  id        String   @id @default(cuid())
-  type      String
+  id          String   @id @default(cuid())
+  type        String
   description String
-  userId    String?
-  metadata  Json?
-  ipAddress String?
-  userAgent String?
-  timestamp DateTime @default(now())
-  createdAt DateTime @default(now())
+  userId      String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime @default(now())
+  createdAt   DateTime @default(now())
 
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@map("activities")
 }
@@ -118,39 +117,39 @@ model OrderStatusHistory {
 }
 
 model DeliveryAgency {
-  id               String   @id @default(cuid())
-  name             String
-  enabled          Boolean  @default(false)
-  credentialsType  CredentialsType
+  id                  String   @id @default(cuid())
+  name                String
+  enabled             Boolean  @default(false)
+  credentialsType     CredentialsType
   credentialsUsername String?
-  credentialsEmail String?
+  credentialsEmail    String?
   credentialsPassword String?
-  credentialsApiKey String?
-  settings         Json
-  webhookUrl       String?
-  pollingInterval  Int      @default(30)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  credentialsApiKey   String?
+  settings            Json
+  webhookUrl          String?
+  pollingInterval     Int      @default(30)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  shipments        DeliveryShipment[]
+  shipments           DeliveryShipment[]
 
   @@map("delivery_agencies")
 }
 
 model DeliveryShipment {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   orderId          String
   agencyId         String
   trackingNumber   String
   barcode          String?
-  status           String
+  status           DeliveryStatus // new enum for delivery stage
   lastStatusUpdate DateTime
   printUrl         String?
   metadata         Json?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   agency           DeliveryAgency @relation(fields: [agencyId], references: [id], onDelete: Restrict)
   statusLogs       DeliveryStatusLog[]
 
@@ -161,15 +160,15 @@ model DeliveryShipment {
 }
 
 model DeliveryStatusLog {
-  id          String   @id @default(cuid())
+  id          String           @id @default(cuid())
   shipmentId  String
-  status      String
+  status      DeliveryStatus
   statusCode  Int?
   message     String
   timestamp   DateTime
   source      LogSource
   rawData     Json?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime         @default(now())
 
   shipment    DeliveryShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
 
@@ -188,21 +187,23 @@ enum UserStatus {
   DISABLED
 }
 
+// Order lifecycle statuses (before handing over to delivery agency)
 enum OrderStatus {
-  PENDING      // First status when order is created
-  CONFIRMED    // Customer confirms the order
-  DELETED      // Fake/invalid order
-  ARCHIVED     // Old completed orders
-  REJECTED     // Customer rejects after confirmation call
-  DELIVERED    // Successfully delivered
-  RETURNED     // Customer didn't answer, order returned
-  ATTEMPT      // Delivery attempt
-  UPLOADED     // Sent to delivery agency (was confirmed)
-  DEPOSIT      // Delivery agency picked up from our site
-  IN_TRANSIT   // Currently being shipped by delivery agency
-  PROCESSING   // Order being processed
-  SHIPPED      // Order has been shipped
-  CANCELLED    // Order cancelled
+  PENDING     // Created from Shopify form
+  ABANDONED   // User left without submitting order
+  CONFIRMED   // Client confirms order (can also be created directly in CRM)
+  DELETED     // Fake/duplicate order
+  REJECTED    // Client rejects after confirmation call
+  ARCHIVED    // Manually archived
+}
+
+// Delivery flow statuses (after confirmation, managed with agency)
+enum DeliveryStatus {
+  UPLOADED    // Order uploaded to delivery agency (still in our inventory)
+  DEPOSIT     // Agency picked up (in their inventory)
+  IN_TRANSIT  // Shipping in progress
+  DELIVERED   // Successfully delivered
+  RETURNED    // Delivery failed, order returned
 }
 
 enum CredentialsType {

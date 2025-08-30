@@ -175,6 +175,13 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const oldStatus = order.status
     const newStatus = updateData.status || order.status
 
+    // Handle attempt count for ATTEMPT statuses
+    let attemptCount = order.attemptCount
+    if (newStatus.startsWith('ATTEMPT_')) {
+      const attemptNum = parseInt(newStatus.split('_')[1])
+      attemptCount = Math.max(attemptCount, attemptNum)
+    }
+
     // Calculate new total if items are updated
     let totalAmount = Number(order.total)
     if (updateData.items) {
@@ -204,7 +211,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
             ? (updateData.deliveryPrice > 0 ? updateData.deliveryPrice : null)
             : order.deliveryPrice,
           notes: updateData.notes !== undefined ? updateData.notes : order.notes,
-          attemptCount: updateData.attemptCount !== undefined ? updateData.attemptCount : order.attemptCount,
+          attemptCount: attemptCount,
           assignedToId: updateData.assignedToId || order.assignedToId
         }
       })
@@ -229,16 +236,41 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         }
       }
 
-      // Add status history if status changed
-      if (oldStatus !== newStatus) {
+      // Add status history if status changed or if there's a status note
+      if (oldStatus !== newStatus || updateData.statusNote) {
+        const statusNote = updateData.statusNote || `Status changed from ${oldStatus} to ${newStatus}`
+        
         await tx.orderStatusHistory.create({
           data: {
             orderId: params.id,
             status: newStatus,
-            notes: updateData.statusNote || `Status changed from ${oldStatus} to ${newStatus}`,
+            notes: statusNote,
             userId: user.id
           }
         })
+      }
+
+      // Create shipment if status changed to UPLOADED and delivery company is selected
+      if (oldStatus !== newStatus && 
+          newStatus === "UPLOADED" && 
+          updateData.deliveryCompany) {
+        try {
+          // This would integrate with delivery service
+          console.log(`Creating shipment for order ${params.id} with ${updateData.deliveryCompany}`)
+          
+          // For now, we'll just add a note in status history
+          await tx.orderStatusHistory.create({
+            data: {
+              orderId: params.id,
+              status: newStatus,
+              notes: `Shipment created with ${updateData.deliveryCompany}`,
+              userId: user.id
+            }
+          })
+        } catch (error) {
+          console.error("Failed to create shipment:", error)
+          // Don't fail the whole transaction
+        }
       }
 
       // Log activity

@@ -1,3 +1,4 @@
+// app/api/delivery/track/[trackingNumber]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth-server'
 import { deliveryService } from '@/lib/delivery/delivery-service'

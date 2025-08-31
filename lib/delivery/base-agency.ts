@@ -14,6 +14,7 @@ export abstract class BaseDeliveryAgency implements IDeliveryAgency {
   abstract readonly id: string
   abstract readonly name: string
   abstract readonly supportedRegions: string[]
+  abstract readonly credentialsType: DeliveryCredentials['type']
 
   // Core methods that must be implemented
   abstract createOrder(order: DeliveryOrder, credentials: DeliveryCredentials): Promise<DeliveryOrderResponse>

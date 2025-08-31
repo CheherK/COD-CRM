@@ -29,6 +29,8 @@ import {
   TestTube,
   Activity,
   BarChart3,
+  Package,
+  Clock,
 } from "lucide-react"
 import { AuthGuard } from "@/components/auth-guard"
 import { useToast } from "@/hooks/use-toast"
@@ -57,7 +59,7 @@ interface DeliveryShipment {
   agencyId: string
   trackingNumber: string
   barcode?: string
-  status: string
+  status: 'UPLOADED' | 'DEPOSIT' | 'IN_TRANSIT' | 'DELIVERED' | 'RETURNED' // Updated to match enum
   lastStatusUpdate: string
   printUrl?: string
   metadata?: Record<string, any>
@@ -159,6 +161,8 @@ function DeliveryManagementContent() {
     try {
       setTesting(agencyId)
 
+      console.log("Testing connection for agency:", agencyId);
+
       const response = await fetch("/api/delivery/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -231,6 +235,7 @@ function DeliveryManagementContent() {
   }
 
   const handleSaveAgency = async () => {
+    console.log("Saving agency:", editingAgency)
     if (!editingAgency) return
 
     try {
@@ -250,9 +255,8 @@ function DeliveryManagementContent() {
       })
 
       if (response.ok) {
-        const result = await response.json()
-        setAgencies(agencies.map((agency) => (agency.id === editingAgency.id ? result.agency : agency)))
-
+        // Reload agencies after update
+        await loadData()
         setIsEditDialogOpen(false)
         setEditingAgency(null)
 
@@ -273,20 +277,17 @@ function DeliveryManagementContent() {
     }
   }
 
+  // Updated status badge mapping to match DeliveryStatus enum
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      pending: { color: "bg-yellow-100 text-yellow-800", icon: AlertCircle },
-      confirmed: { color: "bg-blue-100 text-blue-800", icon: CheckCircle },
-      picked_up: { color: "bg-purple-100 text-purple-800", icon: Truck },
-      in_transit: { color: "bg-indigo-100 text-indigo-800", icon: Truck },
-      out_for_delivery: { color: "bg-orange-100 text-orange-800", icon: Truck },
-      delivered: { color: "bg-green-100 text-green-800", icon: CheckCircle },
-      failed: { color: "bg-red-100 text-red-800", icon: XCircle },
-      returned: { color: "bg-gray-100 text-gray-800", icon: RefreshCw },
-      cancelled: { color: "bg-red-100 text-red-800", icon: XCircle },
+      UPLOADED: { color: "bg-blue-100 text-blue-800", icon: Package },
+      DEPOSIT: { color: "bg-purple-100 text-purple-800", icon: Truck },
+      IN_TRANSIT: { color: "bg-orange-100 text-orange-800", icon: Truck },
+      DELIVERED: { color: "bg-green-100 text-green-800", icon: CheckCircle },
+      RETURNED: { color: "bg-red-100 text-red-800", icon: RefreshCw },
     }
 
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.UPLOADED
     const Icon = config.icon
 
     return (
@@ -320,19 +321,21 @@ function DeliveryManagementContent() {
     }
   }
 
-  const handleBulkStatusUpdate = async (newStatus: string) => {
+  // Fixed bulk status update to use correct endpoint and statuses
+  const handleBulkStatusUpdate = async (newStatus: 'UPLOADED' | 'DEPOSIT' | 'IN_TRANSIT' | 'DELIVERED' | 'RETURNED') => {
     if (selectedShipments.length === 0) return
 
     try {
       setBulkActionLoading(true)
 
-      const response = await fetch("/api/delivery/shipments", {
-        method: "PUT",
+      // Use the delivery service bulk update method
+      const response = await fetch("/api/delivery/shipments/bulk", {
+        method: "PUT", 
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           shipmentIds: selectedShipments,
-          status: newStatus,
+          newStatus: newStatus,
         }),
       })
 
@@ -459,7 +462,7 @@ function DeliveryManagementContent() {
                     <div>
                       <Label className="text-sm font-medium">{t("credentialsType")}</Label>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {agency.credentialsType.replace("_", " ").toUpperCase()}
+                        {agency?.credentialsType?.replace("_", " ").toUpperCase() || t("undefined")}
                       </p>
                     </div>
                     <div>
@@ -548,10 +551,10 @@ function DeliveryManagementContent() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleBulkStatusUpdate("CANCELLED")}
+                      onClick={() => handleBulkStatusUpdate("RETURNED")}
                       disabled={bulkActionLoading}
                     >
-                      {t("markAsCancelled")}
+                      {t("markAsReturned")}
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => setSelectedShipments([])}>
                       {t("clearSelection")}
@@ -619,7 +622,7 @@ function DeliveryManagementContent() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleRetryShipment(shipment.id)}
-                                disabled={shipment.status === "DELIVERED" || shipment.status === "CANCELLED"}
+                                disabled={shipment.status === "DELIVERED" || shipment.status === "RETURNED"}
                               >
                                 {t("retry")}
                               </Button>
@@ -635,7 +638,7 @@ function DeliveryManagementContent() {
           </Card>
         </TabsContent>
 
-        {/* Analytics Tab */}
+        {/* Analytics Tab - Updated to use correct status filtering */}
         <TabsContent value="analytics">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <Card>
@@ -656,7 +659,7 @@ function DeliveryManagementContent() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {shipments.filter((s) => !["delivered", "failed", "cancelled", "returned"].includes(s.status)).length}
+                  {shipments.filter((s) => ["UPLOADED", "DEPOSIT", "IN_TRANSIT"].includes(s.status)).length}
                 </div>
                 <p className="text-xs text-muted-foreground">{t("inTransitOrPending")}</p>
               </CardContent>
@@ -668,7 +671,7 @@ function DeliveryManagementContent() {
                 <CheckCircle className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{shipments.filter((s) => s.status === "delivered").length}</div>
+                <div className="text-2xl font-bold">{shipments.filter((s) => s.status === "DELIVERED").length}</div>
                 <p className="text-xs text-muted-foreground">{t("successfulDeliveries")}</p>
               </CardContent>
             </Card>

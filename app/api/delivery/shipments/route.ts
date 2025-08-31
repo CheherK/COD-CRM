@@ -1,6 +1,4 @@
 // app/api/delivery/shipments/route.ts
-// Updated to handle Order -> DeliveryShipment creation with proper field mapping
-
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth-server';
 import { deliveryService } from '@/lib/delivery/delivery-service';

@@ -1,3 +1,4 @@
+// app/api/delivery/sync/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth-server'
 import { deliverySyncService } from '@/lib/delivery/sync-service'

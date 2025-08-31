@@ -1,9 +1,10 @@
+// app/api/delivery/test/route.ts
 import { type NextRequest, NextResponse } from "next/server"
 import { extractUserFromRequest } from "@/lib/auth-server"
-import { DeliveryAgencyRegistry } from "@/lib/delivery/agency-registry"
+import { deliveryRegistry } from "@/lib/delivery/agency-registry"
 import { logSystemActivity } from "@/lib/activity-logger"
 
-const registry = new DeliveryAgencyRegistry()
+const registry = deliveryRegistry;
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,13 +27,16 @@ export async function POST(request: NextRequest) {
     try {
       // Get agency instance
       const agency = registry.getAgency(agencyId)
+      const config = registry.getAgencyConfig(agencyId)
 
-      if (!agency) {
-        return NextResponse.json({ error: "Agency not found" }, { status: 404 })
+      console.log("🔍 Found agency and config:", { agencyId, agency: agency, config: config })
+
+      if (!agency || !config) {
+        return NextResponse.json({ error: "Agency not found, or not configured", agency, "config": config }, { status: 404 })
       }
 
       // Test connection
-      const testResult = await agency.testConnection()
+      const testResult = await agency.testConnection(config?.credentials)
 
       // Log activity
       await logSystemActivity(
@@ -50,8 +54,7 @@ export async function POST(request: NextRequest) {
         console.log("✅ Connection test successful for:", agencyId)
         return NextResponse.json({
           success: true,
-          message: "Connection test successful",
-          details: testResult.details,
+          message: "Connection test successful"
         })
       } else {
         console.log("❌ Connection test failed for:", agencyId, testResult.error)

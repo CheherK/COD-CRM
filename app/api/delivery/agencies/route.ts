@@ -1,3 +1,4 @@
+// app/api/delivery/agencies/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth-server'
 import { deliveryRegistry } from '@/lib/delivery/agency-registry'
@@ -24,6 +25,7 @@ export async function GET(request: NextRequest) {
         supportedRegions: agency.supportedRegions,
         enabled: config?.enabled || false,
         configured: !!(config?.credentials?.username || config?.credentials?.email || config?.credentials?.apiKey),
+        credentialsType: agency.credentialsType
       }
     })
 

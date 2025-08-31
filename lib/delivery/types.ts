@@ -53,6 +53,7 @@ export interface IDeliveryAgency {
   readonly id: string;
   readonly name: string;
   readonly supportedRegions: string[];
+  readonly credentialsType: DeliveryCredentials['type'];
 
   createOrder(order: DeliveryOrder, credentials: DeliveryCredentials): Promise<DeliveryOrderResponse>;
   trackOrder(trackingNumber: string, credentials: DeliveryCredentials): Promise<DeliveryTrackingResponse>;

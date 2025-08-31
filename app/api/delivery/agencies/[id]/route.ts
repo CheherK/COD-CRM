@@ -1,3 +1,4 @@
+// app/api/delivery/agencies/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth-server'
 import { deliveryRegistry } from '@/lib/delivery/agency-registry'

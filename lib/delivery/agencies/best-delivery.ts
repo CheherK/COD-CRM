@@ -1,5 +1,4 @@
 // lib/delivery/agencies/best-delivery.ts
-// Updated to properly map Best Delivery numeric statuses to DeliveryStatus enum
 
 import { BaseDeliveryAgency } from '../base-agency';
 import type {
@@ -30,6 +29,7 @@ interface BestDeliveryStatusResponse {
 export class BestDeliveryAgency extends BaseDeliveryAgency {
   readonly id = 'best-delivery';
   readonly name = 'Best Delivery';
+  readonly credentialsType = 'username_password' as const;
   readonly supportedRegions = [
     'Ariana', 'Béja', 'Ben Arous', 'Bizerte', 'Gabès', 'Gafsa',
     'Jendouba', 'Kairouan', 'Kasserine', 'Kébili', 'La Manouba',

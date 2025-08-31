@@ -137,10 +137,9 @@ async function main() {
         customerEmail: "alice@example.com",
         customerAddress: "123 Main St",
         customerCity: "Anytown, ST 12345",
-        status: "DELIVERED",
+        status: "CONFIRMED",
         total: 99.99,
         notes: "Customer requested expedited shipping",
-        assignedToId: johnDoe.id,
         items: {
           create: [
             {
@@ -163,7 +162,6 @@ async function main() {
         customerCity: "Another City, ST 67890",
         status: "PENDING",
         total: 49.98,
-        assignedToId: janeSmith.id,
         items: {
           create: [
             {
@@ -183,10 +181,9 @@ async function main() {
         customerEmail: "carol@example.com",
         customerAddress: "789 Pine Rd",
         customerCity: "Third Town, ST 13579",
-        status: "PROCESSING",
+        status: "PENDING",
         total: 79.99,
         notes: "Gift wrapping requested",
-        assignedToId: admin.id,
         items: {
           create: [
             {
@@ -212,7 +209,7 @@ async function main() {
         },
         {
           orderId: order1.id,
-          status: "DELIVERED",
+          status: "CONFIRMED",
           notes: "Order delivered successfully",
           userId: johnDoe.id,
         },
@@ -230,7 +227,7 @@ async function main() {
         },
         {
           orderId: order3.id,
-          status: "PROCESSING",
+          status: "CONFIRMED",
           notes: "Order moved to processing",
           userId: admin.id,
         },

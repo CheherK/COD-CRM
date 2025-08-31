@@ -10,7 +10,7 @@ export interface AuthUser extends User {
 
 export interface OrderWithItems extends Order {
   items: OrderItem[]
-  assignedTo?: User | null
+  confirmedBy?: User | null
 }
 
 export interface OrderItem {

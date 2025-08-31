@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    const { orderIds, action, status, assignedToId } = await request.json()
+    const { orderIds, action, status, confirmedById } = await request.json()
 
     if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
       return NextResponse.json({ error: "Order IDs are required" }, { status: 400 })
@@ -89,40 +89,6 @@ export async function POST(request: NextRequest) {
         )
 
         result.updatedCount = updatedCount
-        break
-
-      case "assign":
-        if (!assignedToId) {
-          return NextResponse.json({ error: "Assigned user ID is required for assign action" }, { status: 400 })
-        }
-
-        // Verify the assigned user exists
-        const assignedUser = await prisma.user.findUnique({
-          where: { id: assignedToId },
-          select: { id: true, username: true }
-        })
-
-        if (!assignedUser) {
-          return NextResponse.json({ error: "Assigned user not found" }, { status: 404 })
-        }
-
-        const { count: assignedCount } = await prisma.order.updateMany({
-          where: {
-            id: { in: orderIds }
-          },
-          data: { assignedToId }
-        })
-
-        await logOrderActivity(
-          "BULK_ASSIGNED",
-          `${assignedCount} orders assigned to ${assignedUser.username} by ${user.username}`,
-          request,
-          user.id,
-          undefined,
-          { orderIds, assignedToId, assignedCount }
-        )
-
-        result.assignedCount = assignedCount
         break
 
       case "export":

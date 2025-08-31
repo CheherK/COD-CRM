@@ -109,11 +109,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Role-based filtering
-    if (user.role === "STAFF") {
-      whereClause.assignedToId = user.id
-    }
-
     // Get total count for pagination
     const totalCount = await prisma.order.count({ where: whereClause })
 
@@ -134,7 +129,7 @@ export async function GET(request: NextRequest) {
             }
           }
         },
-        assignedTo: {
+        confirmedBy: {
           select: {
             id: true,
             username: true,
@@ -192,7 +187,7 @@ export async function GET(request: NextRequest) {
       attemptCount: order.attemptCount,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
-      assignedTo: order.assignedTo,
+      confirmedBy: order.confirmedBy,
       items: order.items.map(item => ({
         id: item.id,
         quantity: item.quantity,
@@ -277,7 +272,7 @@ export async function POST(request: NextRequest) {
           total: totalAmount,
           deliveryPrice: deliveryPrice > 0 ? deliveryPrice : null,
           notes: orderData.notes || null,
-          assignedToId: orderData.assignedToId || user.id,
+          confirmedById: orderData.confirmedById || user.id,
         }
       })
 
@@ -331,7 +326,7 @@ export async function POST(request: NextRequest) {
             product: true
           }
         },
-        assignedTo: {
+        confirmedBy: {
           select: {
             id: true,
             username: true,

@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
             }
           }
         },
-        assignedTo: {
+        confirmedBy: {
           select: {
             id: true,
             username: true,
@@ -82,11 +82,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    // Check if user has permission to view this order
-    if (user.role === "STAFF" && order.assignedToId !== user.id) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
-    }
-
     // Format the order response
     const formattedOrder = {
       id: order.id,
@@ -104,7 +99,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       attemptCount: order.attemptCount,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
-      assignedTo: order.assignedTo,
+      confirmedBy: order.confirmedBy,
       items: order.items.map(item => ({
         id: item.id,
         quantity: item.quantity,
@@ -163,11 +158,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    // Check permissions
-    if (user.role === "STAFF" && order.assignedToId !== user.id) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
-    }
-
     const updateData = await request.json()
     console.log("Updating order:", order.id)
 
@@ -212,7 +202,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
             : order.deliveryPrice,
           notes: updateData.notes !== undefined ? updateData.notes : order.notes,
           attemptCount: attemptCount,
-          assignedToId: updateData.assignedToId || order.assignedToId
+          confirmedById: updateData.confirmedByID || order.confirmedById
         }
       })
 
@@ -302,7 +292,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
             product: true
           }
         },
-        assignedTo: {
+        confirmedBy: {
           select: {
             id: true,
             username: true,

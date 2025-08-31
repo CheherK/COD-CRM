@@ -18,11 +18,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    // Build where clause based on user role
     let orderWhereClause: any = {}
-    if (user.role === "STAFF") {
-      orderWhereClause.assignedToId = user.id
-    }
 
     // Get order statistics
     const totalOrders = await prisma.order.count({ where: orderWhereClause })

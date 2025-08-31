@@ -37,19 +37,19 @@ export async function GET(request: NextRequest) {
     const teamStats = await Promise.all(
       users.map(async (teamUser) => {
         const totalOrders = await prisma.order.count({
-          where: { assignedToId: teamUser.id },
+          where: { confirmedById: teamUser.id },
         })
 
         const completedOrders = await prisma.order.count({
           where: { 
-            assignedToId: teamUser.id, 
+            confirmedById: teamUser.id, 
             status: "DELIVERED" 
           },
         })
 
         const processingOrders = await prisma.order.count({
           where: { 
-            assignedToId: teamUser.id, 
+            confirmedById: teamUser.id, 
             status: { in: ["PROCESSING", "SHIPPED", "IN_TRANSIT"] }
           },
         })
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         const revenueResult = await prisma.order.aggregate({
           _sum: { total: true },
           where: { 
-            assignedToId: teamUser.id, 
+            confirmedById: teamUser.id, 
             status: "DELIVERED" 
           },
         })
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
         const ordersByStatus = await prisma.order.groupBy({
           by: ['status'],
           _count: { status: true },
-          where: { assignedToId: teamUser.id }
+          where: { confirmedById: teamUser.id }
         })
 
         const statusBreakdown = ordersByStatus.reduce((acc, item) => {

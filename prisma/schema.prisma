@@ -48,8 +48,8 @@ model Order {
   updatedAt       DateTime            @updatedAt
 
   items           OrderItem[]
-  assignedTo      User?               @relation(fields: [assignedToId], references: [id])
-  assignedToId    String?
+  confirmedBy     User?               @relation(fields: [confirmedById], references: [id], onDelete: SetNull)
+  confirmedById   String?
   statusHistory   OrderStatusHistory[]
   shipments       DeliveryShipment[]
 

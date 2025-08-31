@@ -151,10 +151,8 @@ export default function ProductsPage() {
 
   if (loading && products.length === 0) {
     return (
-      <div className="space-y-6 bg-white dark:bg-gray-800 min-h-screen">
-        <div className="flex justify-center items-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-600"></div>
       </div>
     )
   }

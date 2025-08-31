@@ -22,15 +22,13 @@ import {
   Settings,
   RefreshCw,
   CheckCircle,
-  XCircle,
-  AlertCircle,
   Eye,
   EyeOff,
   TestTube,
   Activity,
   BarChart3,
   Package,
-  Clock,
+  Loader2,
 } from "lucide-react"
 import { AuthGuard } from "@/components/auth-guard"
 import { useToast } from "@/hooks/use-toast"
@@ -40,6 +38,7 @@ interface DeliveryAgency {
   id: string
   name: string
   enabled: boolean
+  supportedRegions: string[]
   credentialsType: "username_password" | "email_password" | "api_key"
   credentialsUsername?: string
   credentialsEmail?: string
@@ -59,7 +58,7 @@ interface DeliveryShipment {
   agencyId: string
   trackingNumber: string
   barcode?: string
-  status: 'UPLOADED' | 'DEPOSIT' | 'IN_TRANSIT' | 'DELIVERED' | 'RETURNED' // Updated to match enum
+  status: 'UPLOADED' | 'DEPOSIT' | 'IN_TRANSIT' | 'DELIVERED' | 'RETURNED' 
   lastStatusUpdate: string
   printUrl?: string
   metadata?: Record<string, any>
@@ -82,6 +81,7 @@ function DeliveryManagementContent() {
   const [shipments, setShipments] = useState<DeliveryShipment[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [savingAgency, setSavingAgency] = useState(false)
   const [testing, setTesting] = useState<string | null>(null)
   const [editingAgency, setEditingAgency] = useState<DeliveryAgency | null>(null)
   const [showCredentials, setShowCredentials] = useState<Record<string, boolean>>({})
@@ -235,6 +235,7 @@ function DeliveryManagementContent() {
   }
 
   const handleSaveAgency = async () => {
+    setSavingAgency(true) 
     console.log("Saving agency:", editingAgency)
     if (!editingAgency) return
 
@@ -245,17 +246,18 @@ function DeliveryManagementContent() {
         credentials: "include",
         body: JSON.stringify({
           enabled: editingAgency.enabled,
-          credentialsUsername: editingAgency.credentialsUsername,
-          credentialsEmail: editingAgency.credentialsEmail,
-          credentialsPassword: editingAgency.credentialsPassword,
-          credentialsApiKey: editingAgency.credentialsApiKey,
+          credentials: {
+            username: editingAgency.credentialsUsername,
+            email: editingAgency.credentialsEmail,
+            password: editingAgency.credentialsPassword,
+            apiKey: editingAgency.credentialsApiKey,
+          },
           settings: editingAgency.settings,
           pollingInterval: editingAgency.pollingInterval,
         }),
       })
 
       if (response.ok) {
-        // Reload agencies after update
         await loadData()
         setIsEditDialogOpen(false)
         setEditingAgency(null)
@@ -274,6 +276,8 @@ function DeliveryManagementContent() {
         description: t("failedToUpdateAgency"),
         variant: "destructive",
       })
+    } finally {
+      setSavingAgency(false)
     }
   }
 
@@ -298,10 +302,10 @@ function DeliveryManagementContent() {
     )
   }
 
-  const toggleCredentialVisibility = (agencyId: string) => {
+  const toggleCredentialVisibility = (agencyId: string, field: string) => {
     setShowCredentials((prev) => ({
       ...prev,
-      [agencyId]: !prev[agencyId],
+      [agencyId + field]: !prev[agencyId + field],
     }))
   }
 
@@ -476,26 +480,65 @@ function DeliveryManagementContent() {
                         <Label className="text-sm font-medium">{t("username")}</Label>
                         <div className="flex items-center gap-2">
                           <p className="text-sm text-gray-600 dark:text-gray-400">
-                            {showCredentials[agency.id] ? agency.credentialsUsername : "••••••••"}
+                            {showCredentials[agency.id + "username"] ? agency.credentialsUsername : "••••••••"}
                           </p>
-                          <Button variant="ghost" size="sm" onClick={() => toggleCredentialVisibility(agency.id)}>
-                            {showCredentials[agency.id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          <Button variant="ghost" size="sm" onClick={() => toggleCredentialVisibility(agency.id, 'username')}>
+                            {showCredentials[agency.id + "username"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </Button>
                         </div>
                       </div>
                     )}
-                    {agency.settings?.supportedRegions && (
+                    {agency.credentialsEmail && (
+                      <div>
+                        <Label className="text-sm font-medium">{t("email")}</Label>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {showCredentials[agency.id + "email"] ? agency.credentialsEmail : "••••••••"}
+                          </p>
+                          <Button variant="ghost" size="sm" onClick={() => toggleCredentialVisibility(agency.id, 'email')}>
+                            {showCredentials[agency.id + "email"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {agency.credentialsApiKey && (
+                      <div>
+                        <Label className="text-sm font-medium">{t("apiKeys")}</Label>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {showCredentials[agency.id + "apiKey"] ? agency.credentialsApiKey : "••••••••"}
+                          </p>
+                          <Button variant="ghost" size="sm" onClick={() => toggleCredentialVisibility(agency.id, 'apiKey')}>
+                            {showCredentials[agency.id + "apiKey"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {agency.credentialsPassword && (
+                      <div>
+                        <Label className="text-sm font-medium">{t("password")}</Label>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {showCredentials[agency.id + "password"] ? agency.credentialsPassword : "••••••••"}
+                          </p>
+                          <Button variant="ghost" size="sm" onClick={() => toggleCredentialVisibility(agency.id, 'password')}>
+                            {showCredentials[agency.id + "password"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {agency.supportedRegions && (
                       <div className="md:col-span-2">
                         <Label className="text-sm font-medium">{t("supportedRegions")}</Label>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {agency.settings.supportedRegions.slice(0, 5).map((region: string) => (
+                          {agency.supportedRegions.slice(0, 5).map((region: string) => (
                             <Badge key={region} variant="outline" className="text-xs">
                               {region}
                             </Badge>
                           ))}
-                          {agency.settings.supportedRegions.length > 5 && (
+                          {agency.supportedRegions.length > 5 && (
                             <Badge variant="outline" className="text-xs">
-                              +{agency.settings.supportedRegions.length - 5} {t("more")}
+                              +{agency.supportedRegions.length - 5} {t("more")}
                             </Badge>
                           )}
                         </div>
@@ -830,8 +873,8 @@ function DeliveryManagementContent() {
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               {t("cancel")}
             </Button>
-            <Button onClick={handleSaveAgency} className="bg-purple-600 hover:bg-purple-700">
-              {t("saveChanges")}
+            <Button onClick={handleSaveAgency} className="bg-purple-600 hover:bg-purple-700" disabled={savingAgency}>
+              {savingAgency ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : t("saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -35,6 +35,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         ...(user.role === 'ADMIN' && {
           credentialsUsername: config.credentials.username,
           credentialsEmail: config.credentials.email,
+          credentialsApiKey: config.credentials.apiKey,
+          credentialsPassword: config.credentials.password,
         }),
       },
     })
@@ -57,6 +59,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const updates = await request.json()
+
+    console.log("Updating agency:", params.id, updates)
 
     await deliveryRegistry.ensureInitialized()
     await deliveryRegistry.updateAgencyConfig(params.id, updates)

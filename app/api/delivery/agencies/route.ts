@@ -5,6 +5,8 @@ import { deliveryRegistry } from '@/lib/delivery/agency-registry'
 
 export async function GET(request: NextRequest) {
   try {
+    console.log("=== GET DELIVERY AGENCIES API CALLED ===")
+
     const token = request.cookies.get('auth-token')?.value
     if (!token) {
       return NextResponse.json({ error: 'No token provided' }, { status: 401 })
@@ -25,7 +27,14 @@ export async function GET(request: NextRequest) {
         supportedRegions: agency.supportedRegions,
         enabled: config?.enabled || false,
         configured: !!(config?.credentials?.username || config?.credentials?.email || config?.credentials?.apiKey),
-        credentialsType: agency.credentialsType
+        credentialsType: agency.credentialsType,
+        // Only return sensitive data to admins
+        ...(user.role === 'ADMIN' && {
+          credentialsUsername: config?.credentials?.username,
+          credentialsEmail: config?.credentials?.email,
+          credentialsPassword: config?.credentials?.password,
+          credentialsApiKey: config?.credentials?.apiKey,
+        }),
       }
     })
 

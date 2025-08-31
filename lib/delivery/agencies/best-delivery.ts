@@ -1,5 +1,6 @@
 // lib/delivery/agencies/best-delivery.ts
 
+import { cpSync } from 'fs';
 import { BaseDeliveryAgency } from '../base-agency';
 import type {
   DeliveryCredentials,
@@ -60,7 +61,7 @@ export class BestDeliveryAgency extends BaseDeliveryAgency {
   protected mapAgencyStatusToDeliveryStatus(agencyStatus: string | number): DeliveryStatusEnum {
     const statusCode = typeof agencyStatus === 'string' ? parseInt(agencyStatus) : agencyStatus;
     const mappingTable = this.getStatusMappingTable();
-    
+
     return mappingTable[statusCode] || DELIVERY_STATUSES.UPLOADED;
   }
 
@@ -82,34 +83,33 @@ export class BestDeliveryAgency extends BaseDeliveryAgency {
       // Format price with comma decimal separator as required by Best Delivery
       const formattedPrice = order.price.toString().replace('.', ',');
 
-      // Create SOAP request - matching the PHP structure exactly
-      const soapRequest = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <CreatePickup xmlns="http://tempuri.org/">
-      <pickup>
-        <nom>${this.escapeXml(order.customerName)}</nom>
-        <gouvernerat>${this.escapeXml(order.customerCity)}</gouvernerat>
-        <ville>${this.escapeXml(order.customerCity)}</ville>
-        <adresse>${this.escapeXml(order.customerAddress)}</adresse>
-        <tel>${this.escapeXml(order.customerPhone)}</tel>
-        <tel2>${this.escapeXml(order.customerPhone2 || '')}</tel2>
-        <designation>${this.escapeXml(order.productName)}</designation>
-        <prix>${formattedPrice}</prix>
-        <msg>${this.escapeXml(order.notes || '')}</msg>
-        <echange>${order.notes?.toLowerCase().includes('exchange') ? '1' : '0'}</echange>
-        <login>${this.escapeXml(credentials.username || '')}</login>
-        <pwd>${this.escapeXml(credentials.password || '')}</pwd>
-      </pickup>
-    </CreatePickup>
-  </soap:Body>
-</soap:Envelope>`;
+      // Create SOAP envelope matching the working Google Apps Script structure
+      const soapRequest = `<?xml version="1.0" encoding="UTF-8"?>
+  <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" 
+                xmlns:ser="serviceShipments">
+    <soap:Body>
+      <ser:pickup>
+        <ser:login>${this.escapeXml(credentials.username || '')}</ser:login>
+        <ser:pwd>${this.escapeXml(credentials.password || '')}</ser:pwd>
+        <ser:nom>${this.escapeXml(order.customerName)}</ser:nom>
+        <ser:gouvernerat>${this.escapeXml(order.customerCity)}</ser:gouvernerat>
+        <ser:ville>${this.escapeXml(order.customerCity)}</ser:ville>
+        <ser:adresse>${this.escapeXml(order.customerAddress)}</ser:adresse>
+        <ser:tel>${this.escapeXml(order.customerPhone)}</ser:tel>
+        <ser:tel2>${this.escapeXml(order.customerPhone2 || '')}</ser:tel2>
+        <ser:designation>${this.escapeXml(order.productName)}</ser:designation>
+        <ser:prix>${this.escapeXml(formattedPrice)}</ser:prix>
+        <ser:msg>${this.escapeXml(order.notes || '')}</ser:msg>
+        <ser:echange>${order.notes?.toLowerCase().includes('exchange') ? '1' : '0'}</ser:echange>
+      </ser:pickup>
+    </soap:Body>
+  </soap:Envelope>`;
 
       const response = await this.makeRequest(this.apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/xml; charset=utf-8',
-          'SOAPAction': 'CreatePickup',
+          'SOAPAction': '"serviceShipments#CreatePickupServeur"',
         },
         body: soapRequest,
       });
@@ -163,25 +163,24 @@ export class BestDeliveryAgency extends BaseDeliveryAgency {
         return { success: false, error: credValidation.errors.join(', ') };
       }
 
-      // Create SOAP request for tracking status
-      const soapRequest = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <TrackShipmentStatus xmlns="http://tempuri.org/">
-      <pickup>
-        <login>${this.escapeXml(credentials.username || '')}</login>
-        <pwd>${this.escapeXml(credentials.password || '')}</pwd>
-        <tracking_number>${this.escapeXml(trackingNumber)}</tracking_number>
-      </pickup>
-    </TrackShipmentStatus>
-  </soap:Body>
-</soap:Envelope>`;
+      // Use the same SOAP structure as the working Google Apps Script
+      const soapRequest = `<?xml version="1.0" encoding="UTF-8"?>
+  <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" 
+                xmlns:ser="serviceShipments">
+    <soap:Body>
+      <ser:pickup>
+        <ser:login>${this.escapeXml(credentials.username || '')}</ser:login>
+        <ser:pwd>${this.escapeXml(credentials.password || '')}</ser:pwd>
+        <ser:tracking_number>${this.escapeXml(trackingNumber)}</ser:tracking_number>
+      </ser:pickup>
+    </soap:Body>
+  </soap:Envelope>`;
 
       const response = await this.makeRequest(this.apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/xml; charset=utf-8',
-          'SOAPAction': 'TrackShipmentStatus',
+          'SOAPAction': '"serviceShipments#TrackShipmentStatusServeur"',
         },
         body: soapRequest,
       });
@@ -230,40 +229,74 @@ export class BestDeliveryAgency extends BaseDeliveryAgency {
         return { success: false, error: credValidation.errors.join(', ') };
       }
 
-      // Test with a minimal tracking request (this won't create an order)
-      const testSoapRequest = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <TrackShipmentStatus xmlns="http://tempuri.org/">
-      <pickup>
-        <login>${this.escapeXml(credentials.username || '')}</login>
-        <pwd>${this.escapeXml(credentials.password || '')}</pwd>
-        <tracking_number>test123</tracking_number>
-      </pickup>
-    </TrackShipmentStatus>
-  </soap:Body>
-</soap:Envelope>`;
+      // Create a minimal test order with all required fields to test credentials
+      const testSoapRequest = `<?xml version="1.0" encoding="UTF-8"?>
+  <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" 
+                xmlns:ser="serviceShipments">
+    <soap:Body>
+      <ser:pickup>
+        <ser:login>${this.escapeXml(credentials.username || '')}</ser:login>
+        <ser:pwd>${this.escapeXml(credentials.password || '')}</ser:pwd>
+        <ser:nom>Test Connection</ser:nom>
+        <ser:gouvernerat>Sfax</ser:gouvernerat>
+        <ser:ville>Sfax</ser:ville>
+        <ser:adresse>Test Address</ser:adresse>
+        <ser:tel>12345678</ser:tel>
+        <ser:tel2></ser:tel2>
+        <ser:designation>Test Product</ser:designation>
+        <ser:prix>1,000</ser:prix>
+        <ser:msg>Connection test - do not process</ser:msg>
+        <ser:echange>0</ser:echange>
+      </ser:pickup>
+    </soap:Body>
+  </soap:Envelope>`;
 
       const response = await this.makeRequest(this.apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/xml; charset=utf-8',
-          'SOAPAction': 'TrackShipmentStatus',
+          'SOAPAction': '"serviceShipments#CreatePickupServeur"',
         },
         body: testSoapRequest,
       });
 
       const responseText = await response.text();
 
-      // Check if response indicates authentication failure
-      if (responseText.includes('Authentication failed') ||
-        responseText.includes('Invalid credentials') ||
-        responseText.includes('Login failed')) {
-        return { success: false, error: 'Invalid credentials' };
+      console.log("🧪 Test connection response from Best delivery agency:", responseText);
+
+      // Parse the response to check for authentication errors
+      const hasErrorsMatch = responseText.match(/<HasErrors>(\d+)<\/HasErrors>/);
+      const errorsTxtMatch = responseText.match(/<ErrorsTxt>([\s\S]*?)<\/ErrorsTxt>/);
+      
+      if (hasErrorsMatch) {
+        const hasErrors = parseInt(hasErrorsMatch[1]);
+        const errorsText = errorsTxtMatch ? errorsTxtMatch[1] : '';
+        
+        // Check for authentication-related errors
+        if (errorsText.includes('Authentication failed') ||
+            errorsText.includes('Invalid credentials') ||
+            errorsText.includes('Login failed') ||
+            errorsText.includes('Invalid login') ||
+            errorsText.includes('Wrong password')) {
+          return { success: false, error: 'Invalid credentials' };
+        }
+        
+        // If we get validation errors (like missing fields), but not auth errors,
+        // it means the credentials are valid
+        if (hasErrors === 1 && errorsText.includes('field is mandatory')) {
+          this.log('info', 'Connection test successful - credentials valid');
+          return { success: true };
+        }
+        
+        // If no errors, credentials are definitely valid
+        if (hasErrors === 0) {
+          this.log('info', 'Connection test successful - order would be created');
+          return { success: true };
+        }
       }
 
-      // If we get any valid SOAP response (even tracking not found), credentials are valid
-      if (responseText.includes('<soap:') || responseText.includes('HasErrors')) {
+      // If we get any valid SOAP response, assume credentials are valid
+      if (responseText.includes('<SOAP-ENV:') || responseText.includes('<soap:') || responseText.includes('HasErrors')) {
         this.log('info', 'Connection test successful');
         return { success: true };
       }

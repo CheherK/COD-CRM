@@ -92,6 +92,7 @@ export interface DeliveryAgencyConfig {
   enabled: boolean;
   credentials: DeliveryCredentials;
   settings?: Record<string, any>;
+  pollingInterval: number;
 }
 
 export interface SyncResult {

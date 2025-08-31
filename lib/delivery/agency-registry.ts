@@ -55,6 +55,7 @@ export class DeliveryAgencyRegistry {
             apiKey: dbAgency.credentialsApiKey || undefined,
           },
           settings: dbAgency.settings as Record<string, any> || {},
+          pollingInterval: dbAgency.pollingInterval,
         };
         console.log(`🔍 Loading config for agency: ${dbAgency.name} - dbAgency credentialsType: ${dbAgency.credentialsType}`);
 
@@ -67,6 +68,7 @@ export class DeliveryAgencyRegistry {
   }
 
   public getAgency(id: string): IDeliveryAgency | null {
+    console.log(`🔍 Getting agency: ${id} from agencies: `, this.agencies);
     return this.agencies.get(id) || null;
   }
 
@@ -100,6 +102,8 @@ export class DeliveryAgencyRegistry {
     const updatedConfig = { ...existingConfig, ...updates };
     this.configs.set(id, updatedConfig);
 
+    console.log(`🔄 Updating config for agency: ${id} - New config:`, updatedConfig);
+
     // Update in database
     await prisma.deliveryAgency.update({
       where: { id },
@@ -110,6 +114,7 @@ export class DeliveryAgencyRegistry {
         credentialsPassword: updatedConfig.credentials.password || null,
         credentialsApiKey: updatedConfig.credentials.apiKey || null,
         settings: updatedConfig.settings || {},
+        pollingInterval: updatedConfig.pollingInterval,
       },
     });
 

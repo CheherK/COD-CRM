@@ -120,6 +120,7 @@ model DeliveryAgency {
   id                  String   @id @default(cuid())
   name                String
   enabled             Boolean  @default(false)
+  supportedRegions    String[]
   credentialsType     CredentialsType
   credentialsUsername String?
   credentialsEmail    String?

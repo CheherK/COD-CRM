@@ -1,6 +1,4 @@
 // lib/delivery/sync-service.ts
-// Updated to use correct DeliveryStatus enum and handle active shipments properly
-
 import { deliveryService } from './delivery-service'
 import prisma from '@/lib/prisma'
 import type { SyncResult } from './types'
@@ -76,7 +74,7 @@ export class DeliverySyncService {
         }
 
         // Rate limiting - 500ms between requests
-        await new Promise((resolve) => setTimeout(resolve, 500))
+        await new Promise((resolve) => setTimeout(resolve, 1000))
       }
 
       result.duration = Date.now() - startTime

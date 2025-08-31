@@ -4,7 +4,6 @@ import { extractUserFromRequest } from "@/lib/auth-server"
 import { deliveryRegistry } from "@/lib/delivery/agency-registry"
 import { logSystemActivity } from "@/lib/activity-logger"
 
-const registry = deliveryRegistry;
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,11 +24,13 @@ export async function POST(request: NextRequest) {
     console.log("🧪 Testing delivery agency:", agencyId)
 
     try {
+      await deliveryRegistry.ensureInitialized();
       // Get agency instance
-      const agency = registry.getAgency(agencyId)
-      const config = registry.getAgencyConfig(agencyId)
+      const agency = deliveryRegistry.getAgency(agencyId)
+      const config = deliveryRegistry.getAgencyConfig(agencyId)
+      const allAgencies = deliveryRegistry.getAllAgencies()
 
-      console.log("🔍 Found agency and config:", { agencyId, agency: agency, config: config })
+      console.log("🔍 Found agency and config:", { agencyId, agency: agency, config: config, allAgencies: allAgencies })
 
       if (!agency || !config) {
         return NextResponse.json({ error: "Agency not found, or not configured", agency, "config": config }, { status: 404 })

@@ -1,6 +1,6 @@
 ### Order Status Flow
 
-**1. Initial Order Creation**
+**1. Initial Order Creation** (Order Lifecycle in our company):
 
 * **PENDING**: Order is fetched from the sheet.
 
@@ -9,12 +9,17 @@
 * **CONFIRMED**: After calling the client and the order is confirmed.
 * **DELETED**: Marked as duplicate or fake order.
 * **REJECTED**: Client rejects the order (reason for rejection is noted).
+* **ARCHIVED**: Order can be marked as **ARCHIVED** from the order edit screen.
+* **Attempts**: At the stage (typically from **PENDING → CONFIRMED**), if the client does not respond:
+    * **ATTEMPT\_1 → ATTEMPT\_2 → ATTEMPT\_3 …** we have an attemptcount attribute in the order.
+    * These represent our internal call attempts of the client for confirming the order.
+    * This process is internal and **not part of the delivery agency flow**.
 
 ⚠️ In some cases, orders are created directly in the CRM and set as **CONFIRMED** immediately.
 
 ---
 
-**2. Delivery Process**
+**2. Delivery Process** (Order Lifecycle in the delivery platform):
 
 * **CONFIRMED → UPLOADED**:
 
@@ -36,19 +41,3 @@
 * **IN\_TRANSIT → RETURNED**:
 
   * Delivery failed and order returned (status fetched from agency).
-
----
-
-**3. Attempts**
-
-* At any stage (typically from **PENDING → CONFIRMED**), if the client does not respond:
-
-  * **ATTEMPT\_1 → ATTEMPT\_2 → ATTEMPT\_3 …**
-  * These represent our internal call attempts before confirming the order.
-  * This process is internal and **not part of the delivery agency flow**.
-
----
-
-**4. Archiving**
-
-* Any order can be marked as **ARCHIVED** from the order edit screen.

@@ -192,7 +192,9 @@ enum UserStatus {
 enum OrderStatus {
   PENDING     // Created from Shopify form
   ABANDONED   // User left without submitting order
+  ATTEMPTED   // At least one call attempt made - we have attempt count on order
   CONFIRMED   // Client confirms order (can also be created directly in CRM)
+  UPLOADED    // Order uploaded to delivery agency (still in our inventory)
   DELETED     // Fake/duplicate order
   REJECTED    // Client rejects after confirmation call
   ARCHIVED    // Manually archived

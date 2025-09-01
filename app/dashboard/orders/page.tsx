@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label"
 import { useLanguage } from "@/contexts/language-context"
 import { useOrders } from "@/hooks/use-orders"
 import { PhoneFilter } from "@/components/phone-filter"
+import { Skeleton } from "@/components/ui/skeleton"
 
 // API Types
 interface OrderData {
@@ -71,28 +72,9 @@ interface OrderData {
     }
     productId: string
   }[]
-  statusHistory: {
-    id: string
-    status: OrderStatus
-    notes?: string
-    createdAt: string
-    user?: {
-      id: string
-      username: string
-      firstName?: string
-      lastName?: string
-    }
-  }[]
-  shipments: {
-    id: string
-    trackingNumber: string
-    status: string
-    agency: {
-      id: string
-      name: string
-    }
-    createdAt: string
-  }[]
+  totalItems: number
+  firstProduct: any
+  hasMultipleProducts: boolean
 }
 
 interface Product {
@@ -128,6 +110,7 @@ export default function OrdersPage() {
   const {
     orders,
     loading,
+    backgroundLoading,
     pagination,
     filters,
     updateFilters,
@@ -166,9 +149,21 @@ export default function OrdersPage() {
     Promise.all([
       fetchProducts(),
       fetchDeliveryAgencies(),
-      fetchRecentPhoneNumbers()
     ])
   }, [])
+
+  // Update recent phone numbers when orders change
+  useEffect(() => {
+    if (orders.length > 0) {
+      const phoneNumbers = orders
+        .flatMap(order => [order.customerPhone1, order.customerPhone2])
+        .filter((phone): phone is string => Boolean(phone))
+        .filter((phone, index, arr) => arr.indexOf(phone) === index)
+        .slice(0, 10)
+      
+      setRecentPhoneNumbers(phoneNumbers)
+    }
+  }, [orders])
 
   // Handle date range changes
   useEffect(() => {
@@ -204,21 +199,6 @@ export default function OrdersPage() {
     }
   }
 
-  const fetchRecentPhoneNumbers = async () => {
-    try {
-      // Get unique phone numbers from recent orders
-      const phoneNumbers = orders
-        .flatMap(order => [order.customerPhone1, order.customerPhone2])
-        .filter((phone): phone is string => Boolean(phone))
-        .filter((phone, index, arr) => arr.indexOf(phone) === index)
-        .slice(0, 10)
-      
-      setRecentPhoneNumbers(phoneNumbers)
-    } catch (error) {
-      console.error('Failed to fetch recent phone numbers:', error)
-    }
-  }
-
   const getStatusBadgeColor = (status: OrderStatus, attemptCount?: number) => {
     switch (status) {
       case "CONFIRMED":
@@ -233,6 +213,8 @@ export default function OrdersPage() {
         return "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800"
       case "ARCHIVED":
         return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800"
+      case "UPLOADED":
+        return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-800"
       default:
         return "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900/20 dark:text-gray-300 dark:border-gray-800"
     }
@@ -258,6 +240,9 @@ export default function OrdersPage() {
         break
       case "ARCHIVED":
         statusText = t("archived")
+        break
+      case "UPLOADED":
+        statusText = t("uploaded")
         break
       default:
         statusText = status
@@ -383,15 +368,42 @@ export default function OrdersPage() {
   const hasAdvancedFilters = productFilter || cityFilter || deliveryFilter
 
   // Get counts for tabs from the hook
-  const statusCounts = getStatusCounts()
+  const statusCounts = getStatusCounts
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-      </div>
-    )
-  }
+  // Skeleton loading component
+  const TableSkeleton = () => (
+    <>
+      {Array.from({ length: 10 }).map((_, index) => (
+        <TableRow key={index}>
+          <TableCell><Skeleton className="h-4 w-4" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+          <TableCell>
+            <div className="flex items-center space-x-2">
+              <Skeleton className="h-10 w-10 rounded" />
+              <div className="space-y-1">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-3 w-12" />
+              </div>
+            </div>
+          </TableCell>
+          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+          <TableCell>
+            <div className="flex space-x-2">
+              <Skeleton className="h-8 w-8 rounded-md" />
+              <Skeleton className="h-8 w-8 rounded-md" />
+              <Skeleton className="h-8 w-8 rounded-md" />
+            </div>
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
+  )
 
   return (
     <div className="space-y-6 bg-white dark:bg-gray-800 min-h-screen">
@@ -405,6 +417,16 @@ export default function OrdersPage() {
           {t("addOrder")} +
         </Button>
       </div>
+
+      {/* Background loading indicator */}
+      {backgroundLoading && (
+        <div className="fixed top-4 right-4 z-50">
+          <div className="flex items-center bg-white dark:bg-gray-800 shadow-md rounded-md px-3 py-2 text-sm">
+            <Loader2 className="h-4 w-4 animate-spin text-purple-600 mr-2" />
+            {t("updatingOrders")}
+          </div>
+        </div>
+      )}
 
       {/* Bulk Actions */}
       {selectedOrders.length > 0 && (
@@ -508,6 +530,20 @@ export default function OrdersPage() {
                     <SelectItem value="REJECTED">{t("rejected")}</SelectItem>
                     <SelectItem value="ABANDONED">{t("abandoned")}</SelectItem>
                     <SelectItem value="ARCHIVED">{t("archived")}</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select 
+                  value={filters.timeRange || "2weeks"} 
+                  onValueChange={(timeRange) => updateFilters({ timeRange: timeRange as any })}
+                >
+                  <SelectTrigger className="w-full lg:w-32">
+                    <SelectValue placeholder={t("timeRange")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2weeks">{t("last2Weeks")}</SelectItem>
+                    <SelectItem value="1month">{t("lastMonth")}</SelectItem>
+                    <SelectItem value="all">{t("allOrders")}</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -661,94 +697,98 @@ export default function OrdersPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {getOrdersByTab(activeTab).map((order) => (
-                      <TableRow key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                        <TableCell>
-                          <Checkbox
-                            checked={selectedOrders.includes(order.id)}
-                            onCheckedChange={() => handleSelectOrder(order.id)}
-                          />
-                        </TableCell>
-                        <TableCell className="font-medium">#{order.id.slice(-8)}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <div className="w-10 h-10 bg-purple-600 rounded flex items-center justify-center">
-                              {order.items[0]?.product.imageUrl ? (
-                                <img 
-                                  src={order.items[0].product.imageUrl} 
-                                  alt={order.items[0].product.name}
-                                  className="w-10 h-10 rounded object-cover"
-                                />
-                              ) : (
-                                <Package className="h-5 w-5 text-white" />
-                              )}
-                            </div>
-                            <div>
-                              <div className="text-sm font-medium">
-                                {order.items[0]?.product.name || "N/A"}
+                    {loading ? (
+                      <TableSkeleton />
+                    ) : (
+                      getOrdersByTab(activeTab).map((order) => (
+                        <TableRow key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedOrders.includes(order.id)}
+                              onCheckedChange={() => handleSelectOrder(order.id)}
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">#{order.id.slice(-8)}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <div className="w-10 h-10 bg-purple-600 rounded flex items-center justify-center">
+                                {order.firstProduct?.imageUrl ? (
+                                  <img 
+                                    src={order.firstProduct.imageUrl} 
+                                    alt={order.firstProduct.name}
+                                    className="w-10 h-10 rounded object-cover"
+                                  />
+                                ) : (
+                                  <Package className="h-5 w-5 text-white" />
+                                )}
                               </div>
-                              {order.items.length > 1 && (
-                                <div className="text-xs text-gray-500">
-                                  +{order.items.length - 1} {t("moreItems")}
+                              <div>
+                                <div className="text-sm font-medium">
+                                  {order.firstProduct?.name || "N/A"}
                                 </div>
-                              )}
-                              <div className="text-xs text-gray-500">
-                                ×{order.items.reduce((sum, item) => sum + item.quantity, 0)}
+                                {order.hasMultipleProducts && (
+                                  <div className="text-xs text-gray-500">
+                                    +{order.items.length - 1} {t("moreItems")}
+                                  </div>
+                                )}
+                                <div className="text-xs text-gray-500">
+                                  ×{order.totalItems}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{order.customerName}</TableCell>
-                        <TableCell>
-                          <div>
-                            <div>{order.customerPhone1}</div>
-                            {order.customerPhone2 && (
-                              <div className="text-xs text-gray-500">{order.customerPhone2}</div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm text-gray-600 dark:text-gray-400">
-                          {order.customerCity}
-                        </TableCell>
-                        <TableCell className="text-sm text-gray-600 dark:text-gray-400">
-                          {format(new Date(order.createdAt), 'MMM dd, yyyy')}
-                        </TableCell>
-                        <TableCell>
-                          {order.deliveryCompany || "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={`border ${getStatusBadgeColor(order.status, order.attemptCount)}`}>
-                            {getStatusDisplayText(order.status, order.attemptCount)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {order.total.toFixed(2)} TND
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex space-x-2">
-                            <Button variant="ghost" size="sm" onClick={() => handleViewOrder(order)}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleEditOrder(order)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-600 hover:text-red-700"
-                              onClick={() => handleDeleteOrder(order)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell>{order.customerName}</TableCell>
+                          <TableCell>
+                            <div>
+                              <div>{order.customerPhone1}</div>
+                              {order.customerPhone2 && (
+                                <div className="text-xs text-gray-500">{order.customerPhone2}</div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-600 dark:text-gray-400">
+                            {order.customerCity}
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-600 dark:text-gray-400">
+                            {format(new Date(order.createdAt), 'MMM dd, yyyy')}
+                          </TableCell>
+                          <TableCell>
+                            {order.deliveryCompany || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={`border ${getStatusBadgeColor(order.status, order.attemptCount)}`}>
+                              {getStatusDisplayText(order.status, order.attemptCount)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {order.total.toFixed(2)} TND
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex space-x-2">
+                              <Button variant="ghost" size="sm" onClick={() => handleViewOrder(order)}>
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => handleEditOrder(order)}>
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700"
+                                onClick={() => handleDeleteOrder(order)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
 
                 {/* No orders message */}
-                {getOrdersByTab(activeTab).length === 0 && (
+                {!loading && getOrdersByTab(activeTab).length === 0 && (
                   <div className="text-center py-8">
                     <p className="text-gray-500 dark:text-gray-400">
                       {activeTab === "orders" ? t("noOrdersFound") : `${t("no")} ${t(activeTab)} ${t("ordersFound")}`}

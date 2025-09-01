@@ -4,13 +4,13 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Save, List, Trash2, Package, Plus, AlertCircle, Truck, ExternalLink } from "lucide-react"
-import type { OrderData, OrderStatus, OrderProduct } from "@/lib/types"
+import { Save, List, Trash2, Package, Plus, AlertCircle, Truck, ExternalLink, Loader2 } from "lucide-react"
+import type { OrderStatus } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
@@ -20,8 +20,8 @@ interface OrderSidebarProps {
   open: boolean
   onClose: () => void
   mode: "add" | "edit"
-  order?: OrderData | null
-  onSave: (order: OrderData) => void
+  order?: any
+  onSave: () => void
 }
 
 interface ValidationErrors {
@@ -39,121 +39,127 @@ interface DeliveryAgency {
   configured: boolean
 }
 
-const availableProducts = [
-  { id: "prod-1", name: "Wireless Headphones", price: 56 },
-  { id: "prod-2", name: "Smart Watch", price: 120 },
-  { id: "prod-3", name: "Laptop Stand", price: 45 },
-  { id: "prod-4", name: "Phone Case", price: 25 },
-]
+interface Product {
+  id: string
+  name: string
+  nameEn: string
+  nameFr: string
+  price: number
+  imageUrl?: string
+}
+
+interface OrderItem {
+  id?: string
+  productId: string
+  quantity: number
+  price: number
+  product?: Product
+}
+
+interface OrderFormData {
+  id?: string
+  customerName: string
+  customerPhone1: string
+  customerPhone2?: string
+  customerEmail?: string
+  customerAddress: string
+  customerCity: string
+  status: OrderStatus
+  deliveryCompany?: string
+  total: number
+  deliveryPrice?: number
+  notes?: string
+  attemptCount: number
+  items: OrderItem[]
+}
 
 const tunisianCities = [
-  "Tunis",
-  "Sfax",
-  "Sousse",
-  "Kairouan",
-  "Bizerte",
-  "Gabès",
-  "Ariana",
-  "Gafsa",
-  "Monastir",
-  "Ben Arous",
-  "Kasserine",
-  "Medenine",
-  "Nabeul",
-  "Tataouine",
-  "Beja",
-  "Jendouba",
-  "Mahdia",
-  "Sidi Bouzid",
-  "Siliana",
-  "Manouba",
-  "Kef",
-  "Tozeur",
-  "Kebili",
-  "Zaghouan",
+  "Tunis", "Sfax", "Sousse", "Kairouan", "Bizerte", "Gabès", "Ariana", 
+  "Gafsa", "Monastir", "Ben Arous", "Kasserine", "Medenine", "Nabeul", "Tataouine"
 ]
 
-const defaultOrderData: OrderData = {
-  products: [],
-  customer: {
-    name: "",
-    email: "",
-    phone: "",
-    phone2: "",
-    address: "",
-    city: "Tunis",
-  },
-  delivery: null,
+const defaultOrderData: OrderFormData = {
+  customerName: "",
+  customerPhone1: "",
+  customerPhone2: "",
+  customerEmail: "",
+  customerAddress: "",
+  customerCity: "Tunis",
   status: "PENDING",
-  deliveryCost: 0,
+  deliveryCompany: "",
+  total: 0,
   deliveryPrice: 7,
-  total: "0TND",
-  privateNote: "",
+  notes: "",
+  attemptCount: 0,
+  items: []
 }
 
 export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSidebarProps) {
   const { t } = useLanguage()
-  const [orderData, setOrderData] = useState<OrderData>(defaultOrderData)
-  const [selectedProduct, setSelectedProduct] = useState("")
+  const [orderData, setOrderData] = useState<OrderFormData>(defaultOrderData)
+  const [selectedProduct, setSelectedProduct] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<ValidationErrors>({})
   const [deliveryAgencies, setDeliveryAgencies] = useState<DeliveryAgency[]>([])
-  const [selectedDeliveryAgency, setSelectedDeliveryAgency] = useState<string>("defaultAgency")
+  const [selectedDeliveryAgency, setSelectedDeliveryAgency] = useState<string>("")
   const [isCreatingShipment, setIsCreatingShipment] = useState(false)
-  const [shipmentInfo, setShipmentInfo] = useState<{
-    trackingNumber?: string
-    printUrl?: string
-    agencyName?: string
-  } | null>(null)
+  const [shipmentInfo, setShipmentInfo] = useState<any>(null)
+  const [products, setProducts] = useState<Product[]>([])
   const { toast } = useToast()
   const { user } = useAuth()
 
-  // Load delivery agencies on component mount
+  // Load products and delivery agencies on component mount
   useEffect(() => {
+    loadProducts()
     loadDeliveryAgencies()
   }, [])
 
+  // Update form when order changes
   useEffect(() => {
     if (mode === "edit" && order) {
-      console.log("[OrderSidebar] Loading order for edit:", order)
-      // Convert API format to frontend format
-      const convertedOrder: OrderData = {
+      const formattedOrder: OrderFormData = {
         id: order.id,
-        products: (order.products || []).map((product) => ({
-          id: product.id,
-          name: product.name,
-          thumbnail: product.thumbnail || "/placeholder.svg?height=40&width=40",
-          quantity: product.quantity || 1,
-          unitPrice: product.unitPrice || 0,
-          total: product.total || 0,
-          attributes: product.attributes || "",
-        })),
-        customer: {
-          name: order.customer?.name || "",
-          email: order.customer?.email || "",
-          phone: order.customer?.phone || "",
-          phone2: order.customer?.phone2 || "",
-          address: order.customer?.address || "",
-          city: order.customer?.city || "Tunis",
-        },
-        delivery: order.delivery,
+        customerName: order.customerName,
+        customerPhone1: order.customerPhone1,
+        customerPhone2: order.customerPhone2 || "",
+        customerEmail: order.customerEmail || "",
+        customerAddress: order.customerAddress,
+        customerCity: order.customerCity,
         status: order.status,
-        deliveryCost: order.deliveryCost || 0,
-        deliveryPrice: order.deliveryPrice || 7,
+        deliveryCompany: order.deliveryCompany || "",
         total: order.total,
-        privateNote: order.privateNote || "",
-        attemptNumber: order.attemptNumber,
-        date: order.date,
+        deliveryPrice: order.deliveryPrice || 7,
+        notes: order.notes || "",
+        attemptCount: order.attemptCount || 0,
+        items: order.items.map((item: any) => ({
+          id: item.id,
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.price,
+          product: item.product
+        }))
       }
-      setOrderData(convertedOrder)
-      setSelectedDeliveryAgency(order.delivery || "defaultAgency")
+      setOrderData(formattedOrder)
+      setSelectedDeliveryAgency(order.deliveryCompany || "")
     } else {
       setOrderData(defaultOrderData)
-      setSelectedDeliveryAgency("defaultAgency")
+      setSelectedDeliveryAgency("")
     }
     setErrors({})
     setShipmentInfo(null)
   }, [mode, order, open])
+
+  const loadProducts = async () => {
+    try {
+      const response = await fetch('/api/products?limit=1000')
+      const data = await response.json()
+      if (response.ok) {
+        setProducts(data.products || [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch products:', error)
+    }
+  }
 
   const loadDeliveryAgencies = async () => {
     try {
@@ -193,7 +199,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
         }
         break
       case "products":
-        if (!orderData.products || orderData.products.length === 0) {
+        if (!orderData.items || orderData.items.length === 0) {
           newErrors.products = t("atLeastOneProductRequired")
         } else {
           delete newErrors.products
@@ -204,132 +210,44 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
     setErrors(newErrors)
   }
 
-  const handleStatusChange = (status: OrderStatus) => {
-    setOrderData((prev) => ({
+  const handleCustomerChange = (field: keyof typeof orderData, value: string) => {
+    setOrderData(prev => ({
       ...prev,
-      status,
-      attemptNumber: status === "ATTEMPT" ? prev.attemptNumber || 1 : undefined,
-    }))
-  }
-
-  const handleAttemptNumberChange = (attemptNumber: number) => {
-    setOrderData((prev) => ({
-      ...prev,
-      attemptNumber,
-    }))
-  }
-
-  const handleCustomerChange = (field: keyof typeof orderData.customer, value: string) => {
-    setOrderData((prev) => ({
-      ...prev,
-      customer: {
-        ...prev.customer,
-        [field]: value,
-      },
+      [field]: value
     }))
 
     // Validate immediately
-    if (field === "name") {
+    if (field === "customerName") {
       validateField("customerName", value)
-    } else if (field === "phone") {
+    } else if (field === "customerPhone1") {
       validateField("customerPhone", value)
-    } else if (field === "address") {
+    } else if (field === "customerAddress") {
       validateField("customerAddress", value)
     }
   }
 
-  const handleDeliveryAgencyChange = async (agencyId: string) => {
-    setSelectedDeliveryAgency(agencyId)
-    setOrderData((prev) => ({
+  const handleStatusChange = (status: OrderStatus) => {
+    setOrderData(prev => ({
       ...prev,
-      delivery: agencyId || null,
+      status
     }))
-
-    // If this is an edit mode and we have a saved order, create shipment immediately
-    if (mode === "edit" && orderData.id && agencyId) {
-      await createShipment(agencyId)
-    }
   }
 
-  const createShipment = async (agencyId: string) => {
-    if (!orderData.id) return
-
-    setIsCreatingShipment(true)
-    try {
-      const agency = deliveryAgencies.find((a) => a.id === agencyId)
-      if (!agency) {
-        throw new Error("Selected delivery agency not found")
-      }
-
-      if (!agency.enabled || !agency.configured) {
-        toast({
-          title: t("error"),
-          description: `Delivery agency ${agency.name} is not properly configured`,
-          variant: "destructive",
-        })
-        return
-      }
-
-      // Prepare delivery order data
-      const deliveryOrder = {
-        customerName: orderData.customer.name,
-        governorate: orderData.customer.city, // Map city to governorate for now
-        city: orderData.customer.city,
-        address: orderData.customer.address,
-        phone: orderData.customer.phone,
-        phone2: orderData.customer.phone2,
-        productName: orderData.products.map((p) => p.name).join(", "),
-        price: orderData.products.reduce((sum, p) => sum + p.total, 0),
-        comment: orderData.privateNote,
-        isExchange: false,
-      }
-
-      const response = await fetch("/api/delivery/shipments", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          orderId: orderData.id,
-          agencyId,
-          order: deliveryOrder,
-        }),
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        setShipmentInfo({
-          trackingNumber: result.trackingNumber,
-          printUrl: result.printUrl,
-          agencyName: agency.name,
-        })
-
-        toast({
-          title: t("success"),
-          description: `Shipment created successfully with ${agency.name}. Tracking: ${result.trackingNumber}`,
-        })
-      } else {
-        throw new Error(result.errorDetails || result.error || "Failed to create shipment")
-      }
-    } catch (error) {
-      console.error("Failed to create shipment:", error)
-      toast({
-        title: t("error"),
-        description: `Failed to create shipment: ${error instanceof Error ? error.message : "Unknown error"}`,
-        variant: "destructive",
-      })
-    } finally {
-      setIsCreatingShipment(false)
-    }
-  }
-
-  const handleProductQuantityChange = (productId: string, quantity: number) => {
-    setOrderData((prev) => ({
+  const handleDeliveryAgencyChange = (agencyId: string) => {
+    setSelectedDeliveryAgency(agencyId)
+    const agency = deliveryAgencies.find(a => a.id === agencyId)
+    setOrderData(prev => ({
       ...prev,
-      products: (prev.products || []).map((product) =>
-        product.id === productId ? { ...product, quantity, total: (product.unitPrice || 0) * quantity } : product,
-      ),
+      deliveryCompany: agency ? agency.name : ""
+    }))
+  }
+
+  const handleProductQuantityChange = (index: number, quantity: number) => {
+    const newItems = [...orderData.items]
+    newItems[index].quantity = quantity
+    setOrderData(prev => ({
+      ...prev,
+      items: newItems
     }))
     calculateTotals()
   }
@@ -337,77 +255,115 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
   const handleAddProduct = () => {
     if (!selectedProduct) return
 
-    const product = availableProducts.find((p) => p.id === selectedProduct)
+    const product = products.find(p => p.id === selectedProduct)
     if (!product) return
 
-    const newProduct: OrderProduct = {
-      id: product.id,
-      name: product.name,
-      thumbnail: "/placeholder.svg?height=40&width=40",
+    const newItem: OrderItem = {
+      productId: product.id,
       quantity: 1,
-      unitPrice: product.price,
-      total: product.price,
-      attributes: "",
+      price: product.price,
+      product
     }
 
-    setOrderData((prev) => ({
+    setOrderData(prev => ({
       ...prev,
-      products: [...prev.products, newProduct],
+      items: [...prev.items, newItem]
     }))
-    setSelectedProduct("")
+    setSelectedProduct(undefined)
     calculateTotals()
     validateField("products", true)
   }
 
-  const handleRemoveProduct = (productId: string) => {
-    setOrderData((prev) => {
-      const newProducts = (prev.products || []).filter((p) => p.id !== productId)
-      validateField("products", newProducts.length > 0)
-      return {
-        ...prev,
-        products: newProducts,
-      }
-    })
+  const handleRemoveProduct = (index: number) => {
+    const newItems = orderData.items.filter((_, i) => i !== index)
+    setOrderData(prev => ({
+      ...prev,
+      items: newItems
+    }))
     calculateTotals()
+    validateField("products", newItems.length > 0)
   }
 
   const calculateTotals = () => {
     setTimeout(() => {
-      setOrderData((prev) => {
-        const subtotal = (prev.products || []).reduce((sum, product) => sum + (product.total || 0), 0)
-        const finalTotal = subtotal + (prev.deliveryPrice || 0)
-        return {
-          ...prev,
-          total: `${finalTotal}TND`,
-        }
-      })
+      const subtotal = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+      const deliveryPrice = orderData.deliveryPrice || 0
+      const total = subtotal + deliveryPrice
+      
+      setOrderData(prev => ({
+        ...prev,
+        total
+      }))
     }, 0)
   }
 
   const handleDeliveryPriceChange = (price: number) => {
-    setOrderData((prev) => ({
+    setOrderData(prev => ({
       ...prev,
-      deliveryPrice: price,
+      deliveryPrice: price
     }))
     calculateTotals()
   }
 
+  const createShipment = async () => {
+    if (!orderData.id || !selectedDeliveryAgency) return
+
+    setIsCreatingShipment(true)
+    try {
+      const response = await fetch('/api/delivery/shipments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: orderData.id,
+          agencyId: selectedDeliveryAgency
+        }),
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        setShipmentInfo({
+          trackingNumber: result.trackingNumber,
+          printUrl: result.printUrl,
+          agencyName: orderData.deliveryCompany
+        })
+
+        // Update order status to UPLOADED
+        setOrderData(prev => ({
+          ...prev,
+          status: "UPLOADED"
+        }))
+
+        toast({
+          title: t("success"),
+          description: t("shipmentCreatedSuccessfully"),
+        })
+      } else {
+        throw new Error(result.error || "Failed to create shipment")
+      }
+    } catch (error) {
+      console.error("Failed to create shipment:", error)
+      toast({
+        title: t("error"),
+        description: t("failedToCreateShipment"),
+        variant: "destructive",
+      })
+    } finally {
+      setIsCreatingShipment(false)
+    }
+  }
+
   const handleSave = async () => {
     // Validate all fields before saving
-    validateField("customerName", orderData.customer?.name)
-    validateField("customerPhone", orderData.customer?.phone)
-    validateField("customerAddress", orderData.customer?.address)
-    validateField("products", orderData.products?.length > 0)
+    validateField("customerName", orderData.customerName)
+    validateField("customerPhone", orderData.customerPhone1)
+    validateField("customerAddress", orderData.customerAddress)
+    validateField("products", orderData.items.length > 0)
 
     // Check if there are any errors
-    const hasErrors =
-      Object.keys(errors).length > 0 ||
-      !orderData.customer?.name ||
-      !orderData.customer?.phone ||
-      !orderData.customer?.address ||
-      !orderData.products?.length
-
-    if (hasErrors) {
+    if (Object.keys(errors).length > 0) {
       toast({
         title: t("validationError"),
         description: t("pleaseFixAllErrorsBeforeSaving"),
@@ -418,98 +374,58 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
 
     setLoading(true)
     try {
-      console.log("[OrderSidebar] Saving order:", orderData)
-
       // Prepare API payload
       const payload = {
-        customerName: orderData.customer.name,
-        customerEmail: orderData.customer.email,
-        customerPhone: orderData.customer.phone,
-        customerPhone2: orderData.customer.phone2,
-        customerAddress: orderData.customer.address,
-        customerCity: orderData.customer.city,
+        customerName: orderData.customerName,
+        customerPhone1: orderData.customerPhone1,
+        customerPhone2: orderData.customerPhone2 || null,
+        customerEmail: orderData.customerEmail || null,
+        customerAddress: orderData.customerAddress,
+        customerCity: orderData.customerCity,
         status: orderData.status,
-        deliveryCompany: orderData.delivery,
-        deliveryPrice: orderData.deliveryPrice,
-        deliveryCost: orderData.deliveryCost,
-        privateNote: orderData.privateNote,
-        attemptCount: orderData.attemptNumber || 0,
-        items: orderData.products.map((product) => ({
-          productId: product.id,
-          quantity: product.quantity,
-          price: product.unitPrice,
-          attributes: product.attributes,
-        })),
+        deliveryCompany: orderData.deliveryCompany || null,
+        deliveryPrice: orderData.deliveryPrice || 0,
+        notes: orderData.notes || null,
+        items: orderData.items.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.price
+        }))
       }
-
-      console.log("[OrderSidebar] API payload:", payload)
 
       // API call
       const url = mode === "add" ? "/api/orders" : `/api/orders/${orderData.id}`
       const method = mode === "add" ? "POST" : "PUT"
 
-      // Prepare headers with user context
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      }
-
-      // Add user ID to headers for activity logging
-      if (user?.id) {
-        headers["x-user-id"] = user.id
-      }
-
       const response = await fetch(url, {
         method,
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(payload),
       })
 
       if (response.ok) {
-        const savedOrder = await response.json()
-        console.log("[OrderSidebar] Order saved successfully:", savedOrder)
+        const result = await response.json()
+        
+        toast({
+          title: t("success"),
+          description: mode === "add" ? t("orderCreatedSuccessfully") : t("orderUpdatedSuccessfully"),
+        })
 
-        // Convert API response back to frontend format
-        const convertedSavedOrder: OrderData = {
-          id: savedOrder.id,
-          products: (savedOrder.items || []).map((item: any) => ({
-            id: item.productId,
-            name: item.product?.name || `Product ${item.productId}`,
-            thumbnail: item.product?.imageUrl || "/placeholder.svg?height=40&width=40",
-            quantity: item.quantity,
-            unitPrice: item.price,
-            total: item.price * item.quantity,
-            attributes: item.attributes,
-          })),
-          customer: {
-            name: savedOrder.customerName,
-            email: savedOrder.customerEmail,
-            phone: savedOrder.customerPhone,
-            phone2: savedOrder.customerPhone2,
-            address: savedOrder.customerAddress,
-            city: savedOrder.customerCity,
-          },
-          delivery: savedOrder.deliveryCompany,
-          status: savedOrder.status,
-          deliveryCost: savedOrder.deliveryCost,
-          deliveryPrice: savedOrder.deliveryPrice,
-          total: `${savedOrder.total}TND`,
-          privateNote: savedOrder.privateNote,
-          attemptNumber: savedOrder.attemptCount > 0 ? savedOrder.attemptCount : undefined,
-          date: new Date(savedOrder.updatedAt).toLocaleString(),
+        // If this is a new order and we have a delivery agency selected, create shipment
+        if (mode === "add" && selectedDeliveryAgency && result.order) {
+          setOrderData(prev => ({ ...prev, id: result.order.id }))
+          await createShipment()
         }
 
-        // If a delivery agency was selected and this is a new order, create shipment
-        if (selectedDeliveryAgency && mode === "add") {
-          await createShipment(selectedDeliveryAgency)
-        }
-
-        onSave(convertedSavedOrder)
+        onSave()
       } else {
         const errorData = await response.json()
         throw new Error(errorData.error || "Failed to save order")
       }
     } catch (error) {
-      console.error("[OrderSidebar] Error saving order:", error)
+      console.error("Error saving order:", error)
       toast({
         title: t("error"),
         description: `${t("failedToSaveOrder")}: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -522,11 +438,11 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
 
   const getAvailableAgencies = () => {
     return deliveryAgencies.filter(
-      (agency) => agency.enabled && agency.configured && agency.supportedRegions.includes(orderData.customer.city),
+      agency => agency.enabled && agency.configured
     )
   }
 
-  const subtotal = (orderData.products || []).reduce((sum, product) => sum + (product.total || 0), 0)
+  const subtotal = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
@@ -542,7 +458,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                 {mode === "add" ? t("addOrder") : `${t("editOrder")} n°${orderData.id}`}
               </SheetTitle>
               <Button onClick={handleSave} disabled={loading} className="bg-purple-600 hover:bg-purple-700 text-white">
-                <Save className="h-4 w-4 mr-2" />
+                {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                 {loading ? t("saving") : t("save")}
               </Button>
             </div>
@@ -567,13 +483,10 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                     <SelectContent>
                       <SelectItem value="PENDING">{t("pending")}</SelectItem>
                       <SelectItem value="CONFIRMED">{t("confirmed")}</SelectItem>
-                      <SelectItem value="ATTEMPT">{t("attempt")}</SelectItem>
-                      <SelectItem value="DELIVERED">{t("delivered")}</SelectItem>
                       <SelectItem value="REJECTED">{t("rejected")}</SelectItem>
-                      <SelectItem value="RETURNED">{t("returned")}</SelectItem>
                       <SelectItem value="UPLOADED">{t("uploaded")}</SelectItem>
-                      <SelectItem value="DEPOSIT">{t("deposit")}</SelectItem>
-                      <SelectItem value="IN_TRANSIT">{t("inTransit")}</SelectItem>
+                      <SelectItem value="DELIVERED">{t("delivered")}</SelectItem>
+                      <SelectItem value="RETURNED">{t("returned")}</SelectItem>
                       <SelectItem value="ABANDONED">{t("abandoned")}</SelectItem>
                       <SelectItem value="DELETED">{t("deleted")}</SelectItem>
                       <SelectItem value="ARCHIVED">{t("archived")}</SelectItem>
@@ -581,19 +494,20 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                   </Select>
                 </div>
 
-                {orderData.status === "ATTEMPT" && (
-                  <div className="w-32">
-                    <Label htmlFor="attemptNumber">{t("attemptNumber")}</Label>
-                    <Input
-                      id="attemptNumber"
-                      type="number"
-                      min="1"
-                      max="99"
-                      value={orderData.attemptNumber || 1}
-                      onChange={(e) => handleAttemptNumberChange(Number.parseInt(e.target.value) || 1)}
-                    />
-                  </div>
-                )}
+                <div className="w-32">
+                  <Label htmlFor="attemptCount">{t("attemptCount")}</Label>
+                  <Input
+                    id="attemptCount"
+                    type="number"
+                    min="0"
+                    max="99"
+                    value={orderData.attemptCount}
+                    onChange={(e) => setOrderData(prev => ({
+                      ...prev,
+                      attemptCount: Number.parseInt(e.target.value) || 0
+                    }))}
+                  />
+                </div>
               </div>
 
               {/* Delivery Agency Selection */}
@@ -605,13 +519,13 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                 <Select
                   value={selectedDeliveryAgency}
                   onValueChange={handleDeliveryAgencyChange}
-                  disabled={isCreatingShipment}
+                  disabled={isCreatingShipment || orderData.status === "UPLOADED"}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder={t("selectDeliveryAgency")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="defaultAgency">{t("noDeliveryAgency")}</SelectItem>
+                    <SelectItem value="no-agency">{t("noDeliveryAgency")}</SelectItem>
                     {getAvailableAgencies().map((agency) => (
                       <SelectItem key={agency.id} value={agency.id}>
                         {agency.name}
@@ -621,6 +535,22 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                 </Select>
                 {isCreatingShipment && <p className="text-sm text-muted-foreground mt-1">{t("creatingShipment")}...</p>}
               </div>
+
+              {/* Create Shipment Button */}
+              {selectedDeliveryAgency && orderData.status === "CONFIRMED" && (
+                <Button 
+                  onClick={createShipment} 
+                  disabled={isCreatingShipment}
+                  className="w-full"
+                >
+                  {isCreatingShipment ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Truck className="h-4 w-4 mr-2" />
+                  )}
+                  {t("createShipment")}
+                </Button>
+              )}
 
               {/* Shipment Information */}
               {shipmentInfo && (
@@ -661,8 +591,8 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
             <CardContent>
               <Textarea
                 placeholder={t("addPrivateNote")}
-                value={orderData.privateNote}
-                onChange={(e) => setOrderData((prev) => ({ ...prev, privateNote: e.target.value }))}
+                value={orderData.notes || ""}
+                onChange={(e) => setOrderData(prev => ({ ...prev, notes: e.target.value }))}
                 className="min-h-[100px]"
               />
             </CardContent>
@@ -684,8 +614,8 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                 <Label htmlFor="customerName">{t("customerName")} *</Label>
                 <Input
                   id="customerName"
-                  value={orderData.customer.name}
-                  onChange={(e) => handleCustomerChange("name", e.target.value)}
+                  value={orderData.customerName}
+                  onChange={(e) => handleCustomerChange("customerName", e.target.value)}
                   className={cn(errors.customerName && "border-red-500")}
                   required
                 />
@@ -701,16 +631,16 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                 <Input
                   id="customerEmail"
                   type="email"
-                  value={orderData.customer.email}
-                  onChange={(e) => handleCustomerChange("email", e.target.value)}
+                  value={orderData.customerEmail || ""}
+                  onChange={(e) => handleCustomerChange("customerEmail", e.target.value)}
                 />
               </div>
               <div>
-                <Label htmlFor="customerPhone">{t("customerPhone")} *</Label>
+                <Label htmlFor="customerPhone1">{t("customerPhone")} *</Label>
                 <Input
-                  id="customerPhone"
-                  value={orderData.customer.phone}
-                  onChange={(e) => handleCustomerChange("phone", e.target.value)}
+                  id="customerPhone1"
+                  value={orderData.customerPhone1}
+                  onChange={(e) => handleCustomerChange("customerPhone1", e.target.value)}
                   className={cn(errors.customerPhone && "border-red-500")}
                   required
                 />
@@ -725,16 +655,16 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                 <Label htmlFor="customerPhone2">{t("phone2")}</Label>
                 <Input
                   id="customerPhone2"
-                  value={orderData.customer.phone2 || ""}
-                  onChange={(e) => handleCustomerChange("phone2", e.target.value)}
+                  value={orderData.customerPhone2 || ""}
+                  onChange={(e) => handleCustomerChange("customerPhone2", e.target.value)}
                 />
               </div>
               <div>
                 <Label htmlFor="customerAddress">{t("customerAddress")} *</Label>
                 <Textarea
                   id="customerAddress"
-                  value={orderData.customer.address}
-                  onChange={(e) => handleCustomerChange("address", e.target.value)}
+                  value={orderData.customerAddress}
+                  onChange={(e) => handleCustomerChange("customerAddress", e.target.value)}
                   className={cn("min-h-[80px]", errors.customerAddress && "border-red-500")}
                   required
                 />
@@ -747,12 +677,15 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
               </div>
               <div>
                 <Label htmlFor="customerCity">{t("customerCity")}</Label>
-                <Select value={orderData.customer.city} onValueChange={(value) => handleCustomerChange("city", value)}>
+                <Select 
+                  value={orderData.customerCity} 
+                  onValueChange={(value) => handleCustomerChange("customerCity", value)}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {tunisianCities.map((city) => (
+                    {tunisianCities.filter((city) => city !== "").map((city) => (
                       <SelectItem key={city} value={city}>
                         {city}
                       </SelectItem>
@@ -775,7 +708,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                     <SelectValue placeholder={t("selectAProduct")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableProducts.map((product) => (
+                    {products.map((product) => (
                       <SelectItem key={product.id} value={product.id}>
                         {product.name} - {product.price}TND
                       </SelectItem>
@@ -795,7 +728,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
               )}
 
               {/* Products Table */}
-              {orderData.products.length > 0 && (
+              {orderData.items.length > 0 && (
                 <div>
                   <h4 className="font-medium mb-3">{t("orderSummary")}</h4>
                   <div className="overflow-x-auto">
@@ -810,34 +743,34 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {orderData.products.map((product) => (
-                          <TableRow key={product.id}>
+                        {orderData.items.map((item, index) => (
+                          <TableRow key={index}>
                             <TableCell>
                               <div className="flex items-center space-x-2">
                                 <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center">
                                   <Package className="h-4 w-4 text-white" />
                                 </div>
-                                <span className="text-sm">{product.name}</span>
+                                <span className="text-sm">{item.product?.name || "Product"}</span>
                               </div>
                             </TableCell>
                             <TableCell>
                               <Input
                                 type="number"
                                 min="1"
-                                value={product.quantity}
+                                value={item.quantity}
                                 onChange={(e) =>
-                                  handleProductQuantityChange(product.id, Number.parseInt(e.target.value) || 1)
+                                  handleProductQuantityChange(index, Number.parseInt(e.target.value) || 1)
                                 }
                                 className="w-16"
                               />
                             </TableCell>
-                            <TableCell>{product.unitPrice}TND</TableCell>
-                            <TableCell className="font-medium">{product.total}TND</TableCell>
+                            <TableCell>{item.price}TND</TableCell>
+                            <TableCell className="font-medium">{item.price * item.quantity}TND</TableCell>
                             <TableCell>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleRemoveProduct(product.id)}
+                                onClick={() => handleRemoveProduct(index)}
                                 className="text-red-600 hover:text-red-700"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -860,17 +793,8 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex justify-between items-center">
-                <Label>{t("deliveryCost")}:</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={orderData.deliveryCost}
-                  onChange={(e) =>
-                    setOrderData((prev) => ({ ...prev, deliveryCost: Number.parseFloat(e.target.value) || 0 }))
-                  }
-                  className="w-24 text-right"
-                />
+                <Label>{t("subtotal")}:</Label>
+                <span className="font-medium">{subtotal}TND</span>
               </div>
               <div className="flex justify-between items-center">
                 <Label>{t("deliveryPrice")}:</Label>
@@ -878,7 +802,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                   type="number"
                   min="0"
                   step="0.01"
-                  value={orderData.deliveryPrice}
+                  value={orderData.deliveryPrice || 0}
                   onChange={(e) => handleDeliveryPriceChange(Number.parseFloat(e.target.value) || 0)}
                   className="w-24 text-right"
                 />
@@ -887,7 +811,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                 <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
                   <div className="flex justify-between items-center text-lg font-bold text-purple-600 dark:text-purple-400">
                     <span>{t("total")}:</span>
-                    <span>{subtotal + orderData.deliveryPrice}TND</span>
+                    <span>{orderData.total}TND</span>
                   </div>
                 </div>
               </div>

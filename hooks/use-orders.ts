@@ -1,12 +1,12 @@
-// hooks/use-orders.ts
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { useLanguage } from "@/contexts/language-context"
 import type { OrderStatus } from "@/lib/types"
 
-interface OrderData {
+// Types
+export interface MinimalOrderData {
   id: string
   customerName: string
   customerPhone1: string
@@ -41,6 +41,13 @@ interface OrderData {
     }
     productId: string
   }[]
+  // Computed fields from API
+  totalItems: number
+  firstProduct: any
+  hasMultipleProducts: boolean
+}
+
+interface FullOrderData extends MinimalOrderData {
   statusHistory: {
     id: string
     status: OrderStatus
@@ -65,11 +72,14 @@ interface OrderData {
   }[]
 }
 
+type TimeRange = "2weeks" | "1month" | "all"
+
 interface OrdersFilters {
   search?: string
   phoneSearch?: string
   status?: string
   date?: string
+  timeRange?: TimeRange
   page?: number
   limit?: number
 }
@@ -87,14 +97,31 @@ interface BulkOrderAction {
   status?: OrderStatus
 }
 
+// Cache structure
+interface OrdersCache {
+  orders: MinimalOrderData[]
+  pagination: OrdersPagination
+  filters: OrdersFilters
+  timestamp: number
+  fullOrders: { [key: string]: { data: FullOrderData; timestamp: number } }
+}
+
+// Cache TTL constants (in milliseconds)
+const CACHE_TTL = {
+  RECENT_ORDERS: 5 * 60 * 1000, // 5 minutes
+  SEARCH_RESULTS: 2 * 60 * 1000, // 2 minutes  
+  FULL_ORDER: 10 * 60 * 1000, // 10 minutes
+  BACKGROUND_REFRESH: 30 * 1000 // 30 seconds for background refresh
+}
+
 export function useOrders() {
   const { toast } = useToast()
   const { t } = useLanguage()
-  const initialLoadRef = useRef(false)
-
+  
   // State
-  const [orders, setOrders] = useState<OrderData[]>([])
+  const [orders, setOrders] = useState<MinimalOrderData[]>([])
   const [loading, setLoading] = useState(true)
+  const [backgroundLoading, setBackgroundLoading] = useState(false)
   const [pagination, setPagination] = useState<OrdersPagination>({
     page: 1,
     limit: 20,
@@ -103,70 +130,222 @@ export function useOrders() {
   })
   const [filters, setFilters] = useState<OrdersFilters>({
     page: 1,
-    limit: 20
+    limit: 20,
+    timeRange: "2weeks" // Default to last 2 weeks
   })
 
-  // Fetch orders from API - removed filters dependency
-  const fetchOrders = useCallback(async (customFilters?: OrdersFilters) => {
+  // Cache
+  const cacheRef = useRef<{ [key: string]: OrdersCache }>({})
+  const searchTimeoutRef = useRef<NodeJS.Timeout>()
+  const initialLoadRef = useRef(false)
+
+  // Generate cache key
+  const getCacheKey = useCallback((filters: OrdersFilters) => {
+    const { search, phoneSearch, status, timeRange, page, limit } = filters
+    return `${timeRange || '2weeks'}_${status || 'all'}_${search || ''}_${phoneSearch || ''}_${page || 1}_${limit || 20}`
+  }, [])
+
+  // Check if cache is valid
+  const isCacheValid = useCallback((cacheEntry: OrdersCache | undefined, ttl: number = CACHE_TTL.RECENT_ORDERS) => {
+    if (!cacheEntry) return false
+    return (Date.now() - cacheEntry.timestamp) < ttl
+  }, [])
+
+  // Get cached data
+  const getCachedData = useCallback((filters: OrdersFilters) => {
+    const cacheKey = getCacheKey(filters)
+    const cached = cacheRef.current[cacheKey]
+    
+    if (isCacheValid(cached)) {
+      return cached
+    }
+    return null
+  }, [getCacheKey, isCacheValid])
+
+  // Set cached data
+  const setCachedData = useCallback((filters: OrdersFilters, data: Omit<OrdersCache, 'timestamp' | 'fullOrders'>) => {
+    const cacheKey = getCacheKey(filters)
+    const existing = cacheRef.current[cacheKey]
+    
+    cacheRef.current[cacheKey] = {
+      ...data,
+      timestamp: Date.now(),
+      fullOrders: existing?.fullOrders || {}
+    }
+  }, [getCacheKey])
+
+  // Fetch orders from API
+  const fetchOrders = useCallback(async (
+    customFilters?: OrdersFilters, 
+    options: { background?: boolean; skipCache?: boolean } = {}
+  ) => {
+    const currentFilters = customFilters || filters
+    const { background = false, skipCache = false } = options
+
+    // Check cache first (unless skipCache is true)
+    if (!skipCache) {
+      const cached = getCachedData(currentFilters)
+      if (cached) {
+        console.log("📦 Using cached orders data")
+        setOrders(cached.orders)
+        setPagination(cached.pagination)
+        
+        // If not background, we're done
+        if (!background) {
+          setLoading(false)
+          return { success: true, fromCache: true }
+        }
+      }
+    }
+
+    // Set appropriate loading state
+    if (background) {
+      setBackgroundLoading(true)
+    } else if (!getCachedData(currentFilters)) {
       setLoading(true)
+    }
+    
+    try {
+      const searchParams = new URLSearchParams()
       
-      try {
-        const searchParams = new URLSearchParams()
-        const currentFilters = customFilters || filters
-        
-        // Build query parameters
+      // Build query parameters
+      if (currentFilters.timeRange) {
+        searchParams.append('timeRange', currentFilters.timeRange)
+      }
+      
+      if (currentFilters.search?.trim()) {
+        searchParams.append('search', currentFilters.search.trim())
+      }
+      
+      if (currentFilters.phoneSearch?.trim()) {
         if (currentFilters.search?.trim()) {
-          searchParams.append('search', currentFilters.search.trim())
+          searchParams.set('search', `${currentFilters.search.trim()} ${currentFilters.phoneSearch.trim()}`)
+        } else {
+          searchParams.append('search', currentFilters.phoneSearch.trim())
         }
-        
-        if (currentFilters.phoneSearch?.trim()) {
-          if (currentFilters.search?.trim()) {
-            searchParams.set('search', `${currentFilters.search.trim()} ${currentFilters.phoneSearch.trim()}`)
-          } else {
-            searchParams.append('search', currentFilters.phoneSearch.trim())
-          }
-        }
-        
-        if (currentFilters.status && currentFilters.status !== 'all') {
-          searchParams.append('status', currentFilters.status)
-        }
-        
-        if (currentFilters.date) {
-          searchParams.append('date', currentFilters.date)
-        }
-        
-        searchParams.append('page', (currentFilters.page || 1).toString())
-        searchParams.append('limit', (currentFilters.limit || 20).toString())
+      }
+      
+      if (currentFilters.status && currentFilters.status !== 'all') {
+        searchParams.append('status', currentFilters.status)
+      }
+      
+      searchParams.append('page', (currentFilters.page || 1).toString())
+      searchParams.append('limit', (currentFilters.limit || 20).toString())
 
-        const response = await fetch(`/api/orders?${searchParams}`)
-        const data = await response.json()
+      const response = await fetch(`/api/orders/recent?${searchParams}`)
+      const data = await response.json()
 
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to fetch orders')
-        }
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch orders')
+      }
 
-        setOrders(data.orders || [])
-        setPagination(data.pagination || {
-          page: 1,
-          limit: 20,
-          total: 0,
-          pages: 0
-        })
-        
-      } catch (error) {
-        console.error('Failed to fetch orders:', error)
+      const newOrders = data.orders || []
+      const newPagination = data.pagination || {
+        page: 1,
+        limit: 20,
+        total: 0,
+        pages: 0
+      }
+
+      // Update state
+      setOrders(newOrders)
+      setPagination(newPagination)
+      
+      // Cache the results
+      setCachedData(currentFilters, {
+        orders: newOrders,
+        pagination: newPagination,
+        filters: currentFilters
+      })
+      
+      console.log(`✅ Fetched ${newOrders.length} orders (${background ? 'background' : 'foreground'})`)
+      
+      return { success: true, fromCache: false }
+      
+    } catch (error) {
+      console.error('Failed to fetch orders:', error)
+      
+      // Only show toast if not background refresh
+      if (!background) {
         toast({
           title: t("error"),
           description: t("failedToLoadOrders"),
           variant: "destructive",
         })
-      } finally {
-        setLoading(false)
       }
-    }, [filters])
+      
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    } finally {
+      setLoading(false)
+      setBackgroundLoading(false)
+    }
+  }, [filters, getCachedData, setCachedData, toast, t])
 
-  // Update filters and refetch
+  // Fetch full order details
+  const fetchFullOrder = useCallback(async (orderId: string): Promise<FullOrderData | null> => {
+    const cacheKey = getCacheKey(filters)
+    const cache = cacheRef.current[cacheKey]
+    
+    // Check if we have cached full order data
+    if (cache?.fullOrders[orderId] && isCacheValid(cache.fullOrders[orderId], CACHE_TTL.FULL_ORDER)) {
+      console.log(`📦 Using cached full order data for ${orderId}`)
+      return cache.fullOrders[orderId].data
+    }
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}/full`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch order details')
+      }
+
+      const fullOrder = data.order
+
+      // Cache the full order data
+      if (cache) {
+        cache.fullOrders[orderId] = {
+          data: fullOrder,
+          timestamp: Date.now()
+        }
+      }
+
+      console.log(`✅ Fetched full order details for ${orderId}`)
+      return fullOrder
+
+    } catch (error) {
+      console.error('Failed to fetch full order details:', error)
+      toast({
+        title: t("error"),
+        description: t("failedToLoadOrderDetails"),
+        variant: "destructive",
+      })
+      return null
+    }
+  }, [filters, getCacheKey, isCacheValid, toast, t])
+
+  // Debounced search
+  const debouncedSearch = useCallback((searchFilters: Partial<OrdersFilters>) => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      const updatedFilters = { ...filters, ...searchFilters, page: 1 }
+      setFilters(updatedFilters)
+      fetchOrders(updatedFilters)
+    }, 300) // 300ms debounce
+  }, [filters, fetchOrders])
+
+  // Update filters with smart caching
   const updateFilters = useCallback((newFilters: Partial<OrdersFilters>) => {
+    // Handle search with debouncing
+    if (newFilters.search !== undefined || newFilters.phoneSearch !== undefined) {
+      debouncedSearch(newFilters)
+      return
+    }
+
+    // For other filters, update immediately
     const updatedFilters = { ...filters, ...newFilters }
     
     // Reset to page 1 when filters change (except for page changes)
@@ -174,12 +353,24 @@ export function useOrders() {
       updatedFilters.page = 1
     }
     
-    // Only update if filters have actually changed
-    if (JSON.stringify(updatedFilters) !== JSON.stringify(filters)) {
-      setFilters(updatedFilters)
+    setFilters(updatedFilters)
+    
+    // Check cache first, then fetch if needed
+    const cached = getCachedData(updatedFilters)
+    if (cached) {
+      setOrders(cached.orders)
+      setPagination(cached.pagination)
+    } else {
       fetchOrders(updatedFilters)
     }
-  }, [filters, fetchOrders])
+  }, [filters, debouncedSearch, getCachedData, fetchOrders])
+
+  // Background refresh for current data
+  const backgroundRefresh = useCallback(() => {
+    if (!backgroundLoading && orders.length > 0) {
+      fetchOrders(filters, { background: true })
+    }
+  }, [filters, backgroundLoading, orders.length, fetchOrders])
 
   // Bulk actions
   const performBulkAction = useCallback(async (action: BulkOrderAction) => {
@@ -215,8 +406,9 @@ export function useOrders() {
           description: t("ordersExportedSuccessfully"),
         })
       } else {
-        // Refresh orders after other actions
-        await fetchOrders(filters)
+        // Clear cache and refresh orders after other actions
+        cacheRef.current = {}
+        await fetchOrders(filters, { skipCache: true })
         
         const actionMessages = {
           delete: t("ordersDeletedSuccessfully"),
@@ -249,24 +441,7 @@ export function useOrders() {
     })
   }, [performBulkAction])
 
-  // Update order status
-  const updateOrderStatus = useCallback(async (orderIds: string[], status: OrderStatus) => {
-    return performBulkAction({
-      orderIds,
-      action: "updateStatus",
-      status
-    })
-  }, [performBulkAction])
-
-  // Export orders
-  const exportOrders = useCallback(async (orderIds: string[]) => {
-    return performBulkAction({
-      orderIds,
-      action: "export"
-    })
-  }, [performBulkAction])
-
-  // Get orders by status for tabs
+  // Helper functions
   const getOrdersByStatus = useCallback((status?: OrderStatus) => {
     if (!status) {
       return orders.filter(order => !["ABANDONED", "DELETED", "ARCHIVED"].includes(order.status))
@@ -274,8 +449,7 @@ export function useOrders() {
     return orders.filter(order => order.status === status)
   }, [orders])
 
-  // Get status counts
-  const getStatusCounts = useCallback(() => {
+  const getStatusCounts = useMemo(() => {
     const counts = {
       total: orders.length,
       pending: 0,
@@ -312,39 +486,12 @@ export function useOrders() {
     return counts
   }, [orders])
 
-  // Search helpers
-  const searchByPhone = useCallback((phone: string) => {
-    updateFilters({ phoneSearch: phone, search: undefined })
-  }, [updateFilters])
-
-  const searchByText = useCallback((text: string) => {
-    updateFilters({ search: text, phoneSearch: undefined })
-  }, [updateFilters])
-
-  const clearSearch = useCallback(() => {
-    updateFilters({ search: undefined, phoneSearch: undefined })
-  }, [updateFilters])
-
-  // Pagination helpers - fixed to use current filters
+  // Pagination helpers
   const goToPage = useCallback((page: number) => {
-    const updatedFilters = { ...filters, page }
-    setFilters(updatedFilters)
-    fetchOrders(updatedFilters)
-  }, [filters, fetchOrders])
+    updateFilters({ page })
+  }, [updateFilters])
 
-  const nextPage = useCallback(() => {
-    if (pagination.page < pagination.pages) {
-      goToPage(pagination.page + 1)
-    }
-  }, [pagination, goToPage])
-
-  const previousPage = useCallback(() => {
-    if (pagination.page > 1) {
-      goToPage(pagination.page - 1)
-    }
-  }, [pagination, goToPage])
-
-  // Initial load - only run once
+  // Initial load and background refresh setup
   useEffect(() => {
     if (!initialLoadRef.current) {
       initialLoadRef.current = true
@@ -352,30 +499,43 @@ export function useOrders() {
     }
   }, [fetchOrders])
 
+  // Set up background refresh interval
+  useEffect(() => {
+    const interval = setInterval(backgroundRefresh, CACHE_TTL.BACKGROUND_REFRESH)
+    return () => clearInterval(interval)
+  }, [backgroundRefresh])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current)
+      }
+    }
+  }, [])
+
   return {
     // Data
     orders,
     loading,
+    backgroundLoading,
     pagination,
     filters,
 
     // Actions
     fetchOrders,
+    fetchFullOrder,
     updateFilters,
     performBulkAction,
     deleteOrder,
-    updateOrderStatus,
-    exportOrders,
-    setPagination,
 
     // Helpers
     getOrdersByStatus,
     getStatusCounts,
-    searchByPhone,
-    searchByText,
-    clearSearch,
     goToPage,
-    nextPage,
-    previousPage
+
+    // Cache utilities
+    clearCache: () => { cacheRef.current = {} },
+    refreshData: () => fetchOrders(filters, { skipCache: true })
   }
 }

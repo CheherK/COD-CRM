@@ -166,11 +166,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const newStatus = updateData.status || order.status
 
     // Handle attempt count for ATTEMPT statuses
-    let attemptCount = order.attemptCount
-    if (newStatus.startsWith('ATTEMPT_')) {
-      const attemptNum = parseInt(newStatus.split('_')[1])
-      attemptCount = Math.max(attemptCount, attemptNum)
-    }
+    let attemptCount = updateData.attemptCount
 
     // Calculate new total if items are updated
     let totalAmount = Number(order.total)

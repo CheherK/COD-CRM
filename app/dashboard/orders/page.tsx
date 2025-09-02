@@ -35,6 +35,7 @@ import { useLanguage } from "@/contexts/language-context"
 import { useOrders } from "@/hooks/use-orders"
 import { PhoneFilter } from "@/components/phone-filter"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DeliveryStatusEnum } from "@/lib/delivery/types";
 
 // API Types
 interface OrderData {
@@ -118,7 +119,8 @@ export default function OrdersPage() {
     deleteOrder,
     getOrdersByStatus,
     getStatusCounts,
-    goToPage
+    goToPage,
+    refreshData
   } = useOrders()
 
   // Additional state for products and delivery agencies
@@ -199,7 +201,7 @@ export default function OrdersPage() {
     }
   }
 
-  const getStatusBadgeColor = (status: OrderStatus, attemptCount?: number) => {
+  const getStatusBadgeColor = (status: OrderStatus | DeliveryStatusEnum, attemptCount?: number) => {
     switch (status) {
       case "CONFIRMED":
         return "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
@@ -215,16 +217,33 @@ export default function OrdersPage() {
         return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800"
       case "UPLOADED":
         return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-800"
+      // Delivery statuses (from delivery agencies)
+      case "DEPOSIT":
+        return "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-900/20 dark:text-cyan-300 dark:border-cyan-800"
+      case "IN_TRANSIT":
+        return "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800"
+      case "DELIVERED":
+        return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800"
+      case "RETURNED":
+        return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800"
       default:
+        // Attempt statuses
+        if (status.startsWith('ATTEMPT_')) {
+          return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800"
+        }
         return "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900/20 dark:text-gray-300 dark:border-gray-800"
     }
   }
 
-  const getStatusDisplayText = (status: OrderStatus, attemptCount?: number) => {
+  const getStatusDisplayText = (status: OrderStatus | DeliveryStatusEnum, attemptCount?: number) => {
     let statusText = ""
+    console.log("Getting display text for status:", status, "with attemptCount:", attemptCount)
     switch (status) {
       case "PENDING":
         statusText = t("pending")
+        break
+      case "ATTEMPTED":
+        statusText = t("attempted") + (attemptCount ? ` (${attemptCount})` : '')
         break
       case "CONFIRMED":
         statusText = t("confirmed")
@@ -244,12 +263,20 @@ export default function OrdersPage() {
       case "UPLOADED":
         statusText = t("uploaded")
         break
+      case "DEPOSIT":
+        statusText = t("deposit")
+        break
+      case "IN_TRANSIT":
+        statusText = t("inTransit")
+        break
+      case "DELIVERED":
+        statusText = t("delivered")
+        break
+      case "RETURNED":
+        statusText = t("returned")
+        break
       default:
         statusText = status
-    }
-
-    if (attemptCount && attemptCount > 0) {
-      statusText += ` (${attemptCount} ${t("attempts")})`
     }
 
     return statusText
@@ -353,6 +380,7 @@ export default function OrdersPage() {
 
   const handleOrderSaved = async () => {
     setSidebarOpen(false)
+    await refreshData()
     toast({
       title: t("success"),
       description: sidebarMode === "add" ? t("orderCreatedSuccessfully") : t("orderUpdatedSuccessfully"),
@@ -756,7 +784,7 @@ export default function OrdersPage() {
                             {order.deliveryCompany || "-"}
                           </TableCell>
                           <TableCell>
-                            <Badge className={`border ${getStatusBadgeColor(order.status, order.attemptCount)}`}>
+                            <Badge className={`border ${getStatusBadgeColor(order.status, order.attemptCount)} text-center`}>
                               {getStatusDisplayText(order.status, order.attemptCount)}
                             </Badge>
                           </TableCell>

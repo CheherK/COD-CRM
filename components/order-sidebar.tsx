@@ -9,12 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Badge } from "@/components/ui/badge"
 import { Save, List, Trash2, Package, Plus, AlertCircle, Truck, ExternalLink, Loader2 } from "lucide-react"
 import type { OrderStatus } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 import { cn } from "@/lib/utils"
+import { DeliveryShipment, DeliveryStatusEnum } from "@/lib/delivery/types";
 
 interface OrderSidebarProps {
   open: boolean
@@ -117,6 +119,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
   // Update form when order changes
   useEffect(() => {
     if (mode === "edit" && order) {
+      console.log("Loading order for edit:", order)
       const formattedOrder: OrderFormData = {
         id: order.id,
         customerName: order.customerName,
@@ -148,6 +151,20 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
     setErrors({})
     setShipmentInfo(null)
   }, [mode, order, open])
+
+  // Recalculate total when items or delivery price changes
+  useEffect(() => {
+    const subtotal = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+    const deliveryPrice = orderData.deliveryPrice || 0
+    const newTotal = subtotal + deliveryPrice
+    
+    if (newTotal !== orderData.total) {
+      setOrderData(prev => ({
+        ...prev,
+        total: newTotal
+      }))
+    }
+  }, [orderData.items, orderData.deliveryPrice])
 
   const loadProducts = async () => {
     try {
@@ -226,11 +243,138 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
     }
   }
 
+  const getStatusBadgeColor = (status: OrderStatus | DeliveryStatusEnum) => {
+    switch (status) {
+      case "CONFIRMED":
+        return "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
+      case "PENDING":
+        return "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:border-yellow-800"
+      case "REJECTED":
+        return "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800"
+      case "DELETED":
+        return "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900/20 dark:text-gray-300 dark:border-gray-800"
+      case "ABANDONED":
+        return "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800"
+      case "ARCHIVED":
+        return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800"
+      case "UPLOADED":
+        return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-800"
+      // Delivery statuses (these come from delivery agencies)
+      case "DEPOSIT":
+        return "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-900/20 dark:text-cyan-300 dark:border-cyan-800"
+      case "IN_TRANSIT":
+        return "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800"
+      case "DELIVERED":
+        return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800"
+      case "RETURNED":
+        return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800"
+      case("ATTEMPTED"):
+          return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800"
+      default:
+        return "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900/20 dark:text-gray-300 dark:border-gray-800"
+    }
+  }
+
+  const getAvailableStatuses = (currentStatus: OrderStatus, attemptCount?: number) => {
+    // Base statuses that are always available for admin flexibility
+    const alwaysAvailable = [
+      { value: "PENDING", label: t("pending") },
+      { value: "ABANDONED", label: t("abandoned") },
+      { value: "DELETED", label: t("deleted") },
+      { value: "ARCHIVED", label: t("archived") }
+    ]
+
+    // Status-specific transitions based on order lifecycle
+    const conditionalStatuses = []
+
+    switch (currentStatus) {
+      case "PENDING":
+        conditionalStatuses.push(
+          { value: "CONFIRMED", label: t("confirmed") },
+          { value: "REJECTED", label: t("rejected") },
+          { value: "ATTEMPTED", label: `${t("attempt")} ${attemptCount || 1}` }
+        )
+        break
+
+      case "CONFIRMED":
+        conditionalStatuses.push(
+          { value: "UPLOADED", label: t("uploaded") },
+          { value: "REJECTED", label: t("rejected") }
+        )
+        break
+
+      case "UPLOADED":
+        // Once uploaded, only admin can change status manually
+        // Delivery statuses are handled by the delivery system
+        conditionalStatuses.push(
+          { value: "CONFIRMED", label: t("confirmed") } // Allow going back if needed
+        )
+        break
+
+      case "REJECTED":
+        conditionalStatuses.push(
+          { value: "PENDING", label: t("pending") },
+          { value: "CONFIRMED", label: t("confirmed") }
+        )
+        break
+
+      default:
+        // For attempt statuses
+        if (currentStatus === "ATTEMPTED") {
+          conditionalStatuses.push(
+            { value: "CONFIRMED", label: t("confirmed") },
+            { value: "REJECTED", label: t("rejected") }
+          )
+        } else {
+          // For other statuses, allow basic transitions
+          conditionalStatuses.push(
+            { value: "PENDING", label: t("pending") },
+            { value: "CONFIRMED", label: t("confirmed") },
+            { value: "REJECTED", label: t("rejected") }
+          )
+        }
+        break
+    }
+
+    // Combine and remove duplicates
+    const allStatuses = [...alwaysAvailable, ...conditionalStatuses]
+    const uniqueStatuses = allStatuses.filter((status, index, self) => 
+      index === self.findIndex(s => s.value === status.value)
+    )
+
+    return uniqueStatuses.sort((a, b) => {
+      // Sort order: current status first, then logical flow order
+      if (a.value === currentStatus) return -1
+      if (b.value === currentStatus) return 1
+      
+      const order = ['PENDING', 'ATTEMPTED', 'CONFIRMED', 'UPLOADED', 'REJECTED', 'ABANDONED', 'DELETED', 'ARCHIVED']
+      const aIndex = order.indexOf(a.value)
+      const bIndex = order.indexOf(b.value)
+      
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
+      if (aIndex !== -1) return -1
+      if (bIndex !== -1) return 1
+      return a.label.localeCompare(b.label)
+    })
+  }
+
   const handleStatusChange = (status: OrderStatus) => {
-    setOrderData(prev => ({
-      ...prev,
-      status
-    }))
+    setOrderData(prev => {
+      const newData = { ...prev, status }
+      
+      // Clear delivery company if status is changed away from CONFIRMED/UPLOADED
+      if (status === 'PENDING' || status === 'REJECTED' || status === 'ABANDONED' || status === 'DELETED') {
+        newData.deliveryCompany = ""
+        setSelectedDeliveryAgency("")
+      }
+      
+      // Reset shipment info if status changes away from UPLOADED
+      if (status !== 'UPLOADED') {
+        setShipmentInfo(null)
+      }
+      
+      return newData
+    })
   }
 
   const handleDeliveryAgencyChange = (agencyId: string) => {
@@ -243,13 +387,11 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
   }
 
   const handleProductQuantityChange = (index: number, quantity: number) => {
-    const newItems = [...orderData.items]
-    newItems[index].quantity = quantity
-    setOrderData(prev => ({
-      ...prev,
-      items: newItems
-    }))
-    calculateTotals()
+    setOrderData(prev => {
+      const newItems = [...prev.items]
+      newItems[index] = { ...newItems[index], quantity }
+      return { ...prev, items: newItems }
+    })
   }
 
   const handleAddProduct = () => {
@@ -270,31 +412,15 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
       items: [...prev.items, newItem]
     }))
     setSelectedProduct(undefined)
-    calculateTotals()
     validateField("products", true)
   }
 
   const handleRemoveProduct = (index: number) => {
-    const newItems = orderData.items.filter((_, i) => i !== index)
-    setOrderData(prev => ({
-      ...prev,
-      items: newItems
-    }))
-    calculateTotals()
-    validateField("products", newItems.length > 0)
-  }
-
-  const calculateTotals = () => {
-    setTimeout(() => {
-      const subtotal = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
-      const deliveryPrice = orderData.deliveryPrice || 0
-      const total = subtotal + deliveryPrice
-      
-      setOrderData(prev => ({
-        ...prev,
-        total
-      }))
-    }, 0)
+    setOrderData(prev => {
+      const newItems = prev.items.filter((_, i) => i !== index)
+      return { ...prev, items: newItems }
+    })
+    validateField("products", orderData.items.length > 1)
   }
 
   const handleDeliveryPriceChange = (price: number) => {
@@ -302,7 +428,6 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
       ...prev,
       deliveryPrice: price
     }))
-    calculateTotals()
   }
 
   const createShipment = async () => {
@@ -356,6 +481,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
   }
 
   const handleSave = async () => {
+    console.log("Saving order:", orderData)
     // Validate all fields before saving
     validateField("customerName", orderData.customerName)
     validateField("customerPhone", orderData.customerPhone1)
@@ -363,7 +489,13 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
     validateField("products", orderData.items.length > 0)
 
     // Check if there are any errors
-    if (Object.keys(errors).length > 0) {
+    const hasErrors = Object.keys(errors).length > 0 || 
+                     !orderData.customerName.trim() || 
+                     !orderData.customerPhone1.trim() || 
+                     !orderData.customerAddress.trim() || 
+                     orderData.items.length === 0
+
+    if (hasErrors) {
       toast({
         title: t("validationError"),
         description: t("pleaseFixAllErrorsBeforeSaving"),
@@ -386,6 +518,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
         deliveryCompany: orderData.deliveryCompany || null,
         deliveryPrice: orderData.deliveryPrice || 0,
         notes: orderData.notes || null,
+        attemptCount: orderData.attemptCount,
         items: orderData.items.map(item => ({
           productId: item.productId,
           quantity: item.quantity,
@@ -443,6 +576,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
   }
 
   const subtotal = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+  const showAttemptField = orderData.status === "ATTEMPTED"
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
@@ -476,68 +610,115 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
               <div className="flex gap-4">
                 <div className="flex-1">
                   <Label htmlFor="status">{t("status")}</Label>
-                  <Select value={orderData.status} onValueChange={handleStatusChange}>
+                  <div className="space-y-2">
+                    <Select value={orderData.status} onValueChange={handleStatusChange}>
+                      <SelectTrigger>
+                        <SelectValue>
+                            <Badge
+                              className={`border text-xs ${getStatusBadgeColor(orderData.status)}`}
+                            >
+                              {
+                                orderData.status
+                              }
+                            </Badge>
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getAvailableStatuses(orderData.status, orderData.attemptCount).map(
+                          (status) => (
+                            <SelectItem key={status.value} value={status.value}>
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  className={`border text-xs ${getStatusBadgeColor(
+                                    status.value as OrderStatus
+                                  )}`}
+                                >
+                                  {status.label}
+                                </Badge>
+                              </div>
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
+                    
+                    {/* Status flow help text */}
+                    <div className="text-xs text-muted-foreground bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                      {orderData.status === 'PENDING' && (
+                        <p>📞 {t("pendingHelpText")}</p>
+                      )}
+                      {orderData.status === 'ATTEMPTED' && (
+                        <p>🔄 {t("attemptHelpText",)}</p>
+                      )}
+                      {orderData.status === 'CONFIRMED' && (
+                        <p>✅ {t("confirmedHelpText")}</p>
+                      )}
+                      {orderData.status === 'UPLOADED' && (
+                        <p>📦 {t("uploadedHelpText")}</p>
+                      )}
+                      {orderData.status === 'REJECTED' && (
+                        <p>❌ {t("rejectedHelpText")}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {showAttemptField && (
+                  <div className="w-32">
+                    <Label htmlFor="attemptCount">{t("attemptCount")}</Label>
+                    <Input
+                      id="attemptCount"
+                      type="number"
+                      min="0"
+                      max="99"
+                      value={orderData.attemptCount}
+                      onChange={(e) => setOrderData(prev => ({
+                        ...prev,
+                        attemptCount: Number.parseInt(e.target.value) || 0
+                      }))}
+                    />
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {t("callAttempts")}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Delivery Agency Selection - Only show for CONFIRMED orders */}
+              {(orderData.status === "CONFIRMED" || orderData.status === "UPLOADED") && (
+                <div>
+                  <Label htmlFor="deliveryAgency" className="flex items-center gap-2 mb-2">
+                    <Truck className="h-4 w-4" />
+                    {t("deliveryCompany")}
+                  </Label>
+                  <Select
+                    value={selectedDeliveryAgency}
+                    onValueChange={handleDeliveryAgencyChange}
+                    disabled={isCreatingShipment || orderData.status === "UPLOADED"}
+                  >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder={t("selectDeliveryAgency")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="PENDING">{t("pending")}</SelectItem>
-                      <SelectItem value="CONFIRMED">{t("confirmed")}</SelectItem>
-                      <SelectItem value="REJECTED">{t("rejected")}</SelectItem>
-                      <SelectItem value="UPLOADED">{t("uploaded")}</SelectItem>
-                      <SelectItem value="DELIVERED">{t("delivered")}</SelectItem>
-                      <SelectItem value="RETURNED">{t("returned")}</SelectItem>
-                      <SelectItem value="ABANDONED">{t("abandoned")}</SelectItem>
-                      <SelectItem value="DELETED">{t("deleted")}</SelectItem>
-                      <SelectItem value="ARCHIVED">{t("archived")}</SelectItem>
+                      <SelectItem value="no-agency">{t("noDeliveryAgency")}</SelectItem>
+                      {getAvailableAgencies().map((agency) => (
+                        <SelectItem key={agency.id} value={agency.id}>
+                          {agency.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
+                  {isCreatingShipment && <p className="text-sm text-muted-foreground mt-1">{t("creatingShipment")}...</p>}
+                  {orderData.status === "UPLOADED" && (
+                    <p className="text-sm text-green-600 dark:text-green-400 mt-1">
+                      ✅ {t("orderAlreadyUploaded")}
+                    </p>
+                  )}
                 </div>
-
-                <div className="w-32">
-                  <Label htmlFor="attemptCount">{t("attemptCount")}</Label>
-                  <Input
-                    id="attemptCount"
-                    type="number"
-                    min="0"
-                    max="99"
-                    value={orderData.attemptCount}
-                    onChange={(e) => setOrderData(prev => ({
-                      ...prev,
-                      attemptCount: Number.parseInt(e.target.value) || 0
-                    }))}
-                  />
-                </div>
-              </div>
-
-              {/* Delivery Agency Selection */}
-              <div>
-                <Label htmlFor="deliveryAgency" className="flex items-center gap-2">
-                  <Truck className="h-4 w-4" />
-                  {t("deliveryCompany")}
-                </Label>
-                <Select
-                  value={selectedDeliveryAgency}
-                  onValueChange={handleDeliveryAgencyChange}
-                  disabled={isCreatingShipment || orderData.status === "UPLOADED"}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t("selectDeliveryAgency")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="no-agency">{t("noDeliveryAgency")}</SelectItem>
-                    {getAvailableAgencies().map((agency) => (
-                      <SelectItem key={agency.id} value={agency.id}>
-                        {agency.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {isCreatingShipment && <p className="text-sm text-muted-foreground mt-1">{t("creatingShipment")}...</p>}
-              </div>
+              )}
 
               {/* Create Shipment Button */}
-              {selectedDeliveryAgency && orderData.status === "CONFIRMED" && (
+              {selectedDeliveryAgency && selectedDeliveryAgency !== "no-agency" && orderData.status === "CONFIRMED" && (
                 <Button 
                   onClick={createShipment} 
                   disabled={isCreatingShipment}
@@ -748,7 +929,15 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                             <TableCell>
                               <div className="flex items-center space-x-2">
                                 <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center">
-                                  <Package className="h-4 w-4 text-white" />
+                                  {item.product?.imageUrl ? (
+                                    <img 
+                                      src={item.product.imageUrl} 
+                                      alt={item.product.name}
+                                      className="w-8 h-8 rounded object-cover"
+                                    />
+                                  ) : (
+                                    <Package className="h-4 w-4 text-white" />
+                                  )}
                                 </div>
                                 <span className="text-sm">{item.product?.name || "Product"}</span>
                               </div>
@@ -764,8 +953,8 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                                 className="w-16"
                               />
                             </TableCell>
-                            <TableCell>{item.price}TND</TableCell>
-                            <TableCell className="font-medium">{item.price * item.quantity}TND</TableCell>
+                            <TableCell>{item.price.toFixed(2)}TND</TableCell>
+                            <TableCell className="font-medium">{(item.price * item.quantity).toFixed(2)}TND</TableCell>
                             <TableCell>
                               <Button
                                 variant="ghost"
@@ -794,7 +983,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
             <CardContent className="space-y-4">
               <div className="flex justify-between items-center">
                 <Label>{t("subtotal")}:</Label>
-                <span className="font-medium">{subtotal}TND</span>
+                <span className="font-medium">{subtotal.toFixed(2)}TND</span>
               </div>
               <div className="flex justify-between items-center">
                 <Label>{t("deliveryPrice")}:</Label>
@@ -811,7 +1000,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                 <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
                   <div className="flex justify-between items-center text-lg font-bold text-purple-600 dark:text-purple-400">
                     <span>{t("total")}:</span>
-                    <span>{orderData.total}TND</span>
+                    <span>{orderData.total.toFixed(2)}TND</span>
                   </div>
                 </div>
               </div>

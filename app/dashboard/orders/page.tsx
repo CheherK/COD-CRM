@@ -524,7 +524,7 @@ export default function OrdersPage() {
           {/* Filters */}
           <Card>
             <CardContent className="pt-6">
-              <div className="flex flex-col lg:flex-row gap-4 items-center">
+              <div className="flex flex-col lg:flex-row gap-4 items-center mb-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                   <Input
@@ -561,11 +561,19 @@ export default function OrdersPage() {
                   </SelectContent>
                 </Select>
 
+                <div className="flex items-center space-x-2">
+                  <Switch id="all-orders" checked={showAllOrders} onCheckedChange={setShowAllOrders} />
+                  <label htmlFor="all-orders" className="text-sm font-medium">
+                    {t("allOrders")}
+                  </label>
+                </div>
+              </div>
+              <div className="flex flex-col lg:flex-row gap-4 items-center">
                 <Select 
                   value={filters.timeRange || "2weeks"} 
                   onValueChange={(timeRange) => updateFilters({ timeRange: timeRange as any })}
                 >
-                  <SelectTrigger className="w-full lg:w-32">
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder={t("timeRange")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -579,7 +587,7 @@ export default function OrdersPage() {
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-64 justify-start text-left font-normal bg-transparent"
+                      className="w-full justify-start text-left font-normal bg-transparent"
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {dateRange?.from ? (
@@ -685,13 +693,6 @@ export default function OrdersPage() {
                     </Card>
                   </CollapsibleContent>
                 </Collapsible>
-
-                <div className="flex items-center space-x-2">
-                  <Switch id="all-orders" checked={showAllOrders} onCheckedChange={setShowAllOrders} />
-                  <label htmlFor="all-orders" className="text-sm font-medium">
-                    {t("allOrders")}
-                  </label>
-                </div>
               </div>
             </CardContent>
           </Card>

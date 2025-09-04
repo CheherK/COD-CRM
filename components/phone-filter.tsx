@@ -1,12 +1,10 @@
 // components/phone-filter.tsx
 "use client"
-
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Phone, X } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Phone, Search, X } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 
 interface PhoneFilterProps {
@@ -20,30 +18,23 @@ export function PhoneFilter({ value, onChange, suggestions = [], placeholder }: 
   const { t } = useLanguage()
   const [isOpen, setIsOpen] = useState(false)
   const [inputValue, setInputValue] = useState(value)
+  const inputRef = useRef<HTMLInputElement>(null) // Create a ref for the input
 
   // Format phone number as user types
   const formatPhoneNumber = (phone: string) => {
-    // Remove all non-digits except +
     const cleaned = phone.replace(/[^\d+]/g, '')
-    
-    // If starts with +216 (Tunisia country code), format accordingly
     if (cleaned.startsWith('+216')) {
       const number = cleaned.slice(4)
       if (number.length <= 2) return `+216 ${number}`
       if (number.length <= 5) return `+216 ${number.slice(0, 2)} ${number.slice(2)}`
       return `+216 ${number.slice(0, 2)} ${number.slice(2, 5)} ${number.slice(5, 8)}`
     }
-    
-    // If starts with 216, add +
     if (cleaned.startsWith('216')) {
       return formatPhoneNumber(`+${cleaned}`)
     }
-    
-    // If starts with a digit and is 8 digits (local Tunisian number), add +216
     if (/^\d{8}$/.test(cleaned)) {
       return formatPhoneNumber(`+216${cleaned}`)
     }
-    
     return cleaned
   }
 
@@ -65,18 +56,26 @@ export function PhoneFilter({ value, onChange, suggestions = [], placeholder }: 
     onChange("")
   }
 
-  // Filter suggestions based on input
-  const filteredSuggestions = suggestions.filter(suggestion =>
-    suggestion.includes(inputValue.replace(/\D/g, ''))
-  ).slice(0, 5)
+  // Handle click on PopoverTrigger to focus the input
+  const handleTriggerClick = () => {
+    if (inputRef.current) {
+      inputRef.current.focus() // Programmatically focus the input
+    }
+    setIsOpen(true)
+  }
+
+  const filteredSuggestions = suggestions
+    .filter((suggestion) => suggestion.includes(inputValue.replace(/\D/g, '')))
+    .slice(0, 5)
 
   return (
     <div className="relative">
       <Popover open={isOpen && filteredSuggestions.length > 0} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
-          <div className="relative">
+          <div className="relative" onClick={handleTriggerClick}>
             <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
             <Input
+              ref={inputRef} // Attach the ref to the input
               placeholder={placeholder || t("searchByPhone")}
               value={inputValue}
               onChange={(e) => handleInputChange(e.target.value)}

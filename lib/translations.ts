@@ -384,6 +384,7 @@ export const translations = {
     orderDeletedSuccessfully: "Order deleted successfully",
     attempted: "Attempted",
     attempts: "attempts",
+    noOrdersFound: "No orders found",
 
     // Order Sidebar additions
     saving: "Saving...",
@@ -399,6 +400,11 @@ export const translations = {
     orderCreatedSuccessfully: "Order created successfully",
     orderUpdatedSuccessfully: "Order updated successfully",
     callAttempts: "Call Attempts",
+    unsavedChangesDescription: "You have unsaved changes. Are you sure you want to close?",
+    unsavedChanges: "Unsaved Changes",
+    discardChanges: "Discard Changes",
+    saveAndClose: "Save and Close",
+    close: "Close",
 
     // Order Statuses
     confirmed: "Confirmed",

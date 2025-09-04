@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
-import { Save, List, Trash2, Package, Plus, AlertCircle, Truck, ExternalLink, Loader2 } from "lucide-react"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { Save, List, Trash2, Package, Plus, AlertCircle, Truck, ExternalLink, Loader2, X } from "lucide-react"
 import type { OrderStatus } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
@@ -99,6 +100,7 @@ const defaultOrderData: OrderFormData = {
 export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSidebarProps) {
   const { t } = useLanguage()
   const [orderData, setOrderData] = useState<OrderFormData>(defaultOrderData)
+  const [originalOrderData, setOriginalOrderData] = useState<OrderFormData>(defaultOrderData)
   const [selectedProduct, setSelectedProduct] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<ValidationErrors>({})
@@ -107,6 +109,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
   const [isCreatingShipment, setIsCreatingShipment] = useState(false)
   const [shipmentInfo, setShipmentInfo] = useState<any>(null)
   const [products, setProducts] = useState<Product[]>([])
+  const [showCloseConfirmation, setShowCloseConfirmation] = useState(false)
   const { toast } = useToast()
   const { user } = useAuth()
 
@@ -143,9 +146,11 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
         }))
       }
       setOrderData(formattedOrder)
+      setOriginalOrderData(formattedOrder)
       setSelectedDeliveryAgency(order.deliveryCompany || "")
     } else {
       setOrderData(defaultOrderData)
+      setOriginalOrderData(defaultOrderData)
       setSelectedDeliveryAgency("")
     }
     setErrors({})
@@ -156,7 +161,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
   useEffect(() => {
     const subtotal = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
     const deliveryPrice = orderData.deliveryPrice || 0
-    const newTotal = subtotal + deliveryPrice
+    const newTotal = parseFloat((subtotal + deliveryPrice).toFixed(2))
     
     if (newTotal !== orderData.total) {
       setOrderData(prev => ({
@@ -165,6 +170,11 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
       }))
     }
   }, [orderData.items, orderData.deliveryPrice])
+
+  // Check if form has changes
+  const hasChanges = () => {
+    return JSON.stringify(orderData) !== JSON.stringify(originalOrderData)
+  }
 
   const loadProducts = async () => {
     try {
@@ -241,6 +251,24 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
     } else if (field === "customerAddress") {
       validateField("customerAddress", value)
     }
+  }
+
+  const handleClose = () => {
+    if (hasChanges()) {
+      setShowCloseConfirmation(true)
+    } else {
+      onClose()
+    }
+  }
+
+  const handleConfirmClose = () => {
+    setShowCloseConfirmation(false)
+    onClose()
+  }
+
+  const handleSaveAndClose = async () => {
+    setShowCloseConfirmation(false)
+    await handleSave()
   }
 
   const getStatusBadgeColor = (status: OrderStatus | DeliveryStatusEnum) => {
@@ -546,6 +574,9 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
           description: mode === "add" ? t("orderCreatedSuccessfully") : t("orderUpdatedSuccessfully"),
         })
 
+        // Update original data to reflect saved state
+        setOriginalOrderData(orderData)
+
         // If this is a new order and we have a delivery agency selected, create shipment
         if (mode === "add" && selectedDeliveryAgency && result.order) {
           setOrderData(prev => ({ ...prev, id: result.order.id }))
@@ -579,438 +610,475 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
   const showAttemptField = orderData.status === "ATTEMPTED"
 
   return (
-    <Sheet open={open} onOpenChange={onClose}>
-      <SheetContent
-        side="right"
-        className="w-full sm:w-[700px] lg:w-[800px] xl:w-[900px] sm:max-w-[700px] lg:max-w-[800px] xl:max-w-[900px] overflow-y-auto p-0"
-      >
-        {/* Fixed Header */}
-        <div className="sticky top-0 z-10 bg-background border-b px-6 py-4">
-          <SheetHeader>
-            <div className="flex items-center justify-between">
-              <SheetTitle className="text-xl">
-                {mode === "add" ? t("addOrder") : `${t("editOrder")} n°${orderData.id}`}
-              </SheetTitle>
-              <Button onClick={handleSave} disabled={loading} className="bg-purple-600 hover:bg-purple-700 text-white">
-                {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                {loading ? t("saving") : t("save")}
-              </Button>
-            </div>
-          </SheetHeader>
-        </div>
+    <>
+      <Sheet open={open} onOpenChange={() => {}}>
+        <SheetContent
+          side="right"
+          className="w-full sm:w-[700px] lg:w-[800px] xl:w-[900px] sm:max-w-[700px] lg:max-w-[800px] xl:max-w-[900px] overflow-y-auto p-0"
+        >
+          {/* Fixed Header */}
+          <div className="sticky top-0 z-10 bg-background border-b px-6 py-4">
+            <SheetHeader>
+              <div className="flex items-center justify-between">
+                <SheetTitle className="text-xl">
+                  {mode === "add" ? t("addOrder") : `${t("editOrder")} n°${orderData.id}`}
+                </SheetTitle>
+                <div className="flex gap-2">
+                  <Button onClick={handleSave} disabled={loading} className="bg-purple-600 hover:bg-purple-700 text-white">
+                    {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                    {loading ? t("saving") : t("save")}
+                  </Button>
+                  <Button onClick={handleClose} disabled={loading} variant="outline">
+                    <X className="h-4 w-4"/> {t("close")}
+                  </Button>
+                </div>
+              </div>
+            </SheetHeader>
+          </div>
 
-        {/* Scrollable Content */}
-        <div className="px-6 py-6 space-y-6">
-          {/* Order Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("orderDetails")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <Label htmlFor="status">{t("status")}</Label>
-                  <div className="space-y-2">
-                    <Select value={orderData.status} onValueChange={handleStatusChange}>
-                      <SelectTrigger>
-                        <SelectValue>
-                            <Badge
-                              className={`border text-xs ${getStatusBadgeColor(orderData.status)}`}
-                            >
-                              {
-                                orderData.status
-                              }
-                            </Badge>
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {getAvailableStatuses(orderData.status, orderData.attemptCount).map(
-                          (status) => (
-                            <SelectItem key={status.value} value={status.value}>
-                              <div className="flex items-center gap-2">
-                                <Badge
-                                  className={`border text-xs ${getStatusBadgeColor(
-                                    status.value as OrderStatus
-                                  )}`}
-                                >
-                                  {status.label}
-                                </Badge>
-                              </div>
-                            </SelectItem>
-                          )
+          {/* Scrollable Content */}
+          <div className="px-6 py-6 space-y-6">
+            {/* Order Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("orderDetails")}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <Label htmlFor="status">{t("status")}</Label>
+                    <div className="space-y-2">
+                      <Select value={orderData.status} onValueChange={handleStatusChange}>
+                        <SelectTrigger>
+                          <SelectValue>
+                              <Badge
+                                className={`border text-xs ${getStatusBadgeColor(orderData.status)}`}
+                              >
+                                {
+                                  orderData.status
+                                }
+                              </Badge>
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getAvailableStatuses(orderData.status, orderData.attemptCount).map(
+                            (status) => (
+                              <SelectItem key={status.value} value={status.value}>
+                                <div className="flex items-center gap-2">
+                                  <Badge
+                                    className={`border text-xs ${getStatusBadgeColor(
+                                      status.value as OrderStatus
+                                    )}`}
+                                  >
+                                    {status.label}
+                                  </Badge>
+                                </div>
+                              </SelectItem>
+                            )
+                          )}
+                        </SelectContent>
+                      </Select>
+                      
+                      {/* Status flow help text */}
+                      <div className="text-xs text-muted-foreground bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                        {orderData.status === 'PENDING' && (
+                          <p>📞 {t("pendingHelpText")}</p>
                         )}
-                      </SelectContent>
-                    </Select>
-                    
-                    {/* Status flow help text */}
-                    <div className="text-xs text-muted-foreground bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                      {orderData.status === 'PENDING' && (
-                        <p>📞 {t("pendingHelpText")}</p>
-                      )}
-                      {orderData.status === 'ATTEMPTED' && (
-                        <p>🔄 {t("attemptHelpText",)}</p>
-                      )}
-                      {orderData.status === 'CONFIRMED' && (
-                        <p>✅ {t("confirmedHelpText")}</p>
-                      )}
-                      {orderData.status === 'UPLOADED' && (
-                        <p>📦 {t("uploadedHelpText")}</p>
-                      )}
-                      {orderData.status === 'REJECTED' && (
-                        <p>❌ {t("rejectedHelpText")}</p>
-                      )}
-                      {orderData.status === 'ABANDONED' && (
-                        <p>❓ {t("abandonedHelpText")}</p>
-                      )}
+                        {orderData.status === 'ATTEMPTED' && (
+                          <p>🔄 {t("attemptHelpText",)}</p>
+                        )}
+                        {orderData.status === 'CONFIRMED' && (
+                          <p>✅ {t("confirmedHelpText")}</p>
+                        )}
+                        {orderData.status === 'UPLOADED' && (
+                          <p>📦 {t("uploadedHelpText")}</p>
+                        )}
+                        {orderData.status === 'REJECTED' && (
+                          <p>❌ {t("rejectedHelpText")}</p>
+                        )}
+                        {orderData.status === 'ABANDONED' && (
+                          <p>❓ {t("abandonedHelpText")}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
+
+                  {showAttemptField && (
+                    <div className="w-32">
+                      <Label htmlFor="attemptCount">{t("attemptCount")}</Label>
+                      <Input
+                        id="attemptCount"
+                        type="number"
+                        min="0"
+                        max="99"
+                        value={orderData.attemptCount}
+                        onChange={(e) => setOrderData(prev => ({
+                          ...prev,
+                          attemptCount: Number.parseInt(e.target.value) || 0
+                        }))}
+                      />
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {t("callAttempts")}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {showAttemptField && (
-                  <div className="w-32">
-                    <Label htmlFor="attemptCount">{t("attemptCount")}</Label>
-                    <Input
-                      id="attemptCount"
-                      type="number"
-                      min="0"
-                      max="99"
-                      value={orderData.attemptCount}
-                      onChange={(e) => setOrderData(prev => ({
-                        ...prev,
-                        attemptCount: Number.parseInt(e.target.value) || 0
-                      }))}
-                    />
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {t("callAttempts")}
+                {/* Delivery Agency Selection - Only show for CONFIRMED orders */}
+                {(orderData.status === "CONFIRMED" || orderData.status === "UPLOADED") && (
+                  <div>
+                    <Label htmlFor="deliveryAgency" className="flex items-center gap-2 mb-2">
+                      <Truck className="h-4 w-4" />
+                      {t("deliveryCompany")}
+                    </Label>
+                    <Select
+                      value={selectedDeliveryAgency}
+                      onValueChange={handleDeliveryAgencyChange}
+                      disabled={isCreatingShipment || orderData.status === "UPLOADED"}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("selectDeliveryAgency")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="no-agency">{t("noDeliveryAgency")}</SelectItem>
+                        {getAvailableAgencies().map((agency) => (
+                          <SelectItem key={agency.id} value={agency.id}>
+                            {agency.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {isCreatingShipment && <p className="text-sm text-muted-foreground mt-1">{t("creatingShipment")}...</p>}
+                    {orderData.status === "UPLOADED" && (
+                      <p className="text-sm text-green-600 dark:text-green-400 mt-1">
+                        ✅ {t("orderAlreadyUploaded")}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Create Shipment Button */}
+                {selectedDeliveryAgency && selectedDeliveryAgency !== "no-agency" && orderData.status === "CONFIRMED" && (
+                  <Button 
+                    onClick={createShipment} 
+                    disabled={isCreatingShipment}
+                    className="w-full"
+                  >
+                    {isCreatingShipment ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Truck className="h-4 w-4 mr-2" />
+                    )}
+                    {t("createShipment")}
+                  </Button>
+                )}
+
+                {/* Shipment Information */}
+                {shipmentInfo && (
+                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Truck className="h-4 w-4 text-green-600" />
+                      <span className="font-medium text-green-800 dark:text-green-200">{t("shipmentCreated")}</span>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <p>
+                        <strong>{t("agency")}:</strong> {shipmentInfo.agencyName}
+                      </p>
+                      <p>
+                        <strong>{t("trackingNumber")}:</strong> {shipmentInfo.trackingNumber}
+                      </p>
+                      {shipmentInfo.printUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 bg-transparent"
+                          onClick={() => window.open(shipmentInfo.printUrl, "_blank")}
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          {t("printLabel")}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
-              </div>
+              </CardContent>
+            </Card>
 
-              {/* Delivery Agency Selection - Only show for CONFIRMED orders */}
-              {(orderData.status === "CONFIRMED" || orderData.status === "UPLOADED") && (
+            {/* Private Note */}
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("privateNote")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  placeholder={t("addPrivateNote")}
+                  value={orderData.notes || ""}
+                  onChange={(e) => setOrderData(prev => ({ ...prev, notes: e.target.value }))}
+                  className="min-h-[100px]"
+                />
+              </CardContent>
+            </Card>
+
+            {/* Customer Details */}
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>{t("customerDetails")}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Name + Email */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="customerName">{t("customerName")} *</Label>
+                    <Input
+                      id="customerName"
+                      value={orderData.customerName}
+                      onChange={(e) => handleCustomerChange("customerName", e.target.value)}
+                      className={cn(errors.customerName && "border-red-500")}
+                      required
+                    />
+                    {errors.customerName && (
+                      <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.customerName}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="customerEmail">{t("customerEmail")}</Label>
+                    <Input
+                      id="customerEmail"
+                      type="email"
+                      value={orderData.customerEmail || ""}
+                      onChange={(e) => handleCustomerChange("customerEmail", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Phone 1 + Phone 2 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="customerPhone1">{t("customerPhone")} *</Label>
+                    <Input
+                      id="customerPhone1"
+                      value={orderData.customerPhone1}
+                      onChange={(e) => handleCustomerChange("customerPhone1", e.target.value)}
+                      className={cn(errors.customerPhone && "border-red-500")}
+                      required
+                    />
+                    {errors.customerPhone && (
+                      <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.customerPhone}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="customerPhone2">{t("phone2")}</Label>
+                    <Input
+                      id="customerPhone2"
+                      value={orderData.customerPhone2 || ""}
+                      onChange={(e) => handleCustomerChange("customerPhone2", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Address */}
                 <div>
-                  <Label htmlFor="deliveryAgency" className="flex items-center gap-2 mb-2">
-                    <Truck className="h-4 w-4" />
-                    {t("deliveryCompany")}
-                  </Label>
-                  <Select
-                    value={selectedDeliveryAgency}
-                    onValueChange={handleDeliveryAgencyChange}
-                    disabled={isCreatingShipment || orderData.status === "UPLOADED"}
+                  <Label htmlFor="customerAddress">{t("customerAddress")} *</Label>
+                  <Textarea
+                    id="customerAddress"
+                    value={orderData.customerAddress}
+                    onChange={(e) => handleCustomerChange("customerAddress", e.target.value)}
+                    className={cn("min-h-[80px]", errors.customerAddress && "border-red-500")}
+                    required
+                  />
+                  {errors.customerAddress && (
+                    <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.customerAddress}
+                    </div>
+                  )}
+                </div>
+
+                {/* City */}
+                <div>
+                  <Label htmlFor="customerCity">{t("customerCity")}</Label>
+                  <Select 
+                    value={orderData.customerCity} 
+                    onValueChange={(value) => handleCustomerChange("customerCity", value)}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder={t("selectDeliveryAgency")} />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="no-agency">{t("noDeliveryAgency")}</SelectItem>
-                      {getAvailableAgencies().map((agency) => (
-                        <SelectItem key={agency.id} value={agency.id}>
-                          {agency.name}
+                      {tunisianCities.filter((city) => city !== "").map((city) => (
+                        <SelectItem key={city} value={city}>
+                          {city}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {isCreatingShipment && <p className="text-sm text-muted-foreground mt-1">{t("creatingShipment")}...</p>}
-                  {orderData.status === "UPLOADED" && (
-                    <p className="text-sm text-green-600 dark:text-green-400 mt-1">
-                      ✅ {t("orderAlreadyUploaded")}
-                    </p>
-                  )}
                 </div>
-              )}
+              </CardContent>
+            </Card>
 
-              {/* Create Shipment Button */}
-              {selectedDeliveryAgency && selectedDeliveryAgency !== "no-agency" && orderData.status === "CONFIRMED" && (
-                <Button 
-                  onClick={createShipment} 
-                  disabled={isCreatingShipment}
-                  className="w-full"
-                >
-                  {isCreatingShipment ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Truck className="h-4 w-4 mr-2" />
-                  )}
-                  {t("createShipment")}
-                </Button>
-              )}
-
-              {/* Shipment Information */}
-              {shipmentInfo && (
-                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Truck className="h-4 w-4 text-green-600" />
-                    <span className="font-medium text-green-800 dark:text-green-200">{t("shipmentCreated")}</span>
-                  </div>
-                  <div className="space-y-1 text-sm">
-                    <p>
-                      <strong>{t("agency")}:</strong> {shipmentInfo.agencyName}
-                    </p>
-                    <p>
-                      <strong>{t("trackingNumber")}:</strong> {shipmentInfo.trackingNumber}
-                    </p>
-                    {shipmentInfo.printUrl && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-2 bg-transparent"
-                        onClick={() => window.open(shipmentInfo.printUrl, "_blank")}
-                      >
-                        <ExternalLink className="h-3 w-3 mr-1" />
-                        {t("printLabel")}
-                      </Button>
-                    )}
-                  </div>
+            {/* Product Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("products")}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <Select value={selectedProduct} onValueChange={setSelectedProduct}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder={t("selectAProduct")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.map((product) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          {product.name} - {product.price}TND
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button onClick={handleAddProduct} disabled={!selectedProduct}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
 
-          {/* Private Note */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("privateNote")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                placeholder={t("addPrivateNote")}
-                value={orderData.notes || ""}
-                onChange={(e) => setOrderData(prev => ({ ...prev, notes: e.target.value }))}
-                className="min-h-[100px]"
-              />
-            </CardContent>
-          </Card>
-
-          {/* Customer Details */}
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle>{t("customerDetails")}</CardTitle>
-                <Button variant="outline" size="sm">
-                  <List className="h-4 w-4 mr-2" />
-                  {t("checkOrders")}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="customerName">{t("customerName")} *</Label>
-                <Input
-                  id="customerName"
-                  value={orderData.customerName}
-                  onChange={(e) => handleCustomerChange("customerName", e.target.value)}
-                  className={cn(errors.customerName && "border-red-500")}
-                  required
-                />
-                {errors.customerName && (
-                  <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
+                {errors.products && (
+                  <div className="flex items-center gap-1 text-sm text-red-600">
                     <AlertCircle className="h-3 w-3" />
-                    {errors.customerName}
+                    {errors.products}
                   </div>
                 )}
-              </div>
-              <div>
-                <Label htmlFor="customerEmail">{t("customerEmail")}</Label>
-                <Input
-                  id="customerEmail"
-                  type="email"
-                  value={orderData.customerEmail || ""}
-                  onChange={(e) => handleCustomerChange("customerEmail", e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="customerPhone1">{t("customerPhone")} *</Label>
-                <Input
-                  id="customerPhone1"
-                  value={orderData.customerPhone1}
-                  onChange={(e) => handleCustomerChange("customerPhone1", e.target.value)}
-                  className={cn(errors.customerPhone && "border-red-500")}
-                  required
-                />
-                {errors.customerPhone && (
-                  <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.customerPhone}
-                  </div>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="customerPhone2">{t("phone2")}</Label>
-                <Input
-                  id="customerPhone2"
-                  value={orderData.customerPhone2 || ""}
-                  onChange={(e) => handleCustomerChange("customerPhone2", e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="customerAddress">{t("customerAddress")} *</Label>
-                <Textarea
-                  id="customerAddress"
-                  value={orderData.customerAddress}
-                  onChange={(e) => handleCustomerChange("customerAddress", e.target.value)}
-                  className={cn("min-h-[80px]", errors.customerAddress && "border-red-500")}
-                  required
-                />
-                {errors.customerAddress && (
-                  <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.customerAddress}
-                  </div>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="customerCity">{t("customerCity")}</Label>
-                <Select 
-                  value={orderData.customerCity} 
-                  onValueChange={(value) => handleCustomerChange("customerCity", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tunisianCities.filter((city) => city !== "").map((city) => (
-                      <SelectItem key={city} value={city}>
-                        {city}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* Product Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("products")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Select value={selectedProduct} onValueChange={setSelectedProduct}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder={t("selectAProduct")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {products.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.name} - {product.price}TND
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button onClick={handleAddProduct} disabled={!selectedProduct}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {errors.products && (
-                <div className="flex items-center gap-1 text-sm text-red-600">
-                  <AlertCircle className="h-3 w-3" />
-                  {errors.products}
-                </div>
-              )}
-
-              {/* Products Table */}
-              {orderData.items.length > 0 && (
-                <div>
-                  <h4 className="font-medium mb-3">{t("orderSummary")}</h4>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>{t("product")}</TableHead>
-                          <TableHead>{t("quantity")}</TableHead>
-                          <TableHead>{t("price")}</TableHead>
-                          <TableHead>{t("total")}</TableHead>
-                          <TableHead>{t("action")}</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {orderData.items.map((item, index) => (
-                          <TableRow key={index}>
-                            <TableCell>
-                              <div className="flex items-center space-x-2">
-                                <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center">
-                                  {item.product?.imageUrl ? (
-                                    <img 
-                                      src={item.product.imageUrl} 
-                                      alt={item.product.name}
-                                      className="w-8 h-8 rounded object-cover"
-                                    />
-                                  ) : (
-                                    <Package className="h-4 w-4 text-white" />
-                                  )}
-                                </div>
-                                <span className="text-sm">{item.product?.name || "Product"}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Input
-                                type="number"
-                                min="1"
-                                value={item.quantity}
-                                onChange={(e) =>
-                                  handleProductQuantityChange(index, Number.parseInt(e.target.value) || 1)
-                                }
-                                className="w-16"
-                              />
-                            </TableCell>
-                            <TableCell>{item.price.toFixed(2)}TND</TableCell>
-                            <TableCell className="font-medium">{(item.price * item.quantity).toFixed(2)}TND</TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveProduct(index)}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
+                {/* Products Table */}
+                {orderData.items.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-3">{t("orderSummary")}</h4>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{t("product")}</TableHead>
+                            <TableHead>{t("quantity")}</TableHead>
+                            <TableHead>{t("price")}</TableHead>
+                            <TableHead>{t("total")}</TableHead>
+                            <TableHead>{t("action")}</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {orderData.items.map((item, index) => (
+                            <TableRow key={index}>
+                              <TableCell>
+                                <div className="flex items-center space-x-2">
+                                  <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center">
+                                    {item.product?.imageUrl ? (
+                                      <img 
+                                        src={item.product.imageUrl} 
+                                        alt={item.product.name}
+                                        className="w-8 h-8 rounded object-cover"
+                                      />
+                                    ) : (
+                                      <Package className="h-4 w-4 text-white" />
+                                    )}
+                                  </div>
+                                  <span className="text-sm">{item.product?.name || "Product"}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) =>
+                                    handleProductQuantityChange(index, Number.parseInt(e.target.value) || 1)
+                                  }
+                                  className="w-16"
+                                />
+                              </TableCell>
+                              <TableCell>{item.price.toFixed(2)}TND</TableCell>
+                              <TableCell className="font-medium">{(item.price * item.quantity).toFixed(2)}TND</TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemoveProduct(index)}
+                                  className="text-red-600 hover:text-red-700"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
 
-          {/* Pricing Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("pricing")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between items-center">
-                <Label>{t("subtotal")}:</Label>
-                <span className="font-medium">{subtotal.toFixed(2)}TND</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <Label>{t("deliveryPrice")}:</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={orderData.deliveryPrice || 0}
-                  onChange={(e) => handleDeliveryPriceChange(Number.parseFloat(e.target.value) || 0)}
-                  className="w-24 text-right"
-                />
-              </div>
-              <div className="border-t pt-4">
-                <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
-                  <div className="flex justify-between items-center text-lg font-bold text-purple-600 dark:text-purple-400">
-                    <span>{t("total")}:</span>
-                    <span>{orderData.total.toFixed(2)}TND</span>
+            {/* Pricing Summary */}
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("pricing")}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <Label>{t("subtotal")}:</Label>
+                  <span className="font-medium">{subtotal.toFixed(2)}TND</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <Label>{t("deliveryPrice")}:</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={orderData.deliveryPrice || 0}
+                    onChange={(e) => handleDeliveryPriceChange(Number.parseFloat(e.target.value) || 0)}
+                    className="w-24 text-right"
+                  />
+                </div>
+                <div className="border-t pt-4">
+                  <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
+                    <div className="flex justify-between items-center text-lg font-bold text-purple-600 dark:text-purple-400">
+                      <span>{t("total")}:</span>
+                      <span>{orderData.total.toFixed(2)}TND</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </SheetContent>
-    </Sheet>
+              </CardContent>
+            </Card>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Close Confirmation Dialog */}
+      <AlertDialog open={showCloseConfirmation} onOpenChange={setShowCloseConfirmation}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("unsavedChanges")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("unsavedChangesDescription")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowCloseConfirmation(false)}>
+              {t("cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmClose}>
+              {t("discardChanges")}
+            </AlertDialogAction>
+            <AlertDialogAction onClick={handleSaveAndClose}>
+              {t("saveAndClose")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

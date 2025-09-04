@@ -16,8 +16,6 @@ export async function POST(request: NextRequest) {
     // Authenticate user
     const user = await authenticateUser(username, password)
 
-    console.log("📡 Authentication result for", user)
-
     if (!user) {
       console.log("❌ Authentication failed for:", username)
 
@@ -40,6 +38,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Remove password from response
+    // @ts-expect-error
     const { password: _, ...safeUser } = user
 
     // Set HTTP-only cookie

@@ -1,3 +1,4 @@
+// hooks/use-orders.ts
 "use client"
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react"
@@ -70,6 +71,7 @@ interface FullOrderData extends MinimalOrderData {
     }
     createdAt: string
   }[]
+  subtotal: number
 }
 
 type TimeRange = "2weeks" | "1month" | "all"
@@ -281,7 +283,7 @@ export function useOrders() {
     }
   }, [filters, getCachedData, setCachedData, toast, t])
 
-  // Fetch full order details
+  // Fetch full order details - Using existing endpoint
   const fetchFullOrder = useCallback(async (orderId: string): Promise<FullOrderData | null> => {
     const cacheKey = getCacheKey(filters)
     const cache = cacheRef.current[cacheKey]
@@ -293,7 +295,7 @@ export function useOrders() {
     }
 
     try {
-      const response = await fetch(`/api/orders/${orderId}/full`)
+      const response = await fetch(`/api/orders/${orderId}`)
       const data = await response.json()
 
       if (!response.ok) {
@@ -539,3 +541,4 @@ export function useOrders() {
     refreshData: () => fetchOrders(filters, { skipCache: true })
   }
 }
+      

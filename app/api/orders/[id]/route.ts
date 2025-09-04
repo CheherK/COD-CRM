@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    console.log("=== GET ORDER BY ID API CALLED ===")
+    console.log("=== GET FULL ORDER DETAILS API CALLED ===")
 
     const token = request.cookies.get("auth-token")?.value
 
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         },
         statusHistory: {
           orderBy: {
-            createdAt: 'desc'
+            createdAt: 'asc' // Order chronologically for history view
           },
           include: {
             user: {
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    // Format the order response
+    // Format the order response with complete history
     const formattedOrder = {
       id: order.id,
       customerName: order.customerName,
@@ -108,25 +108,42 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         product: item.product,
         productId: item.productId
       })),
-      statusHistory: order.statusHistory,
+      // Enhanced status history with proper chronological order
+      statusHistory: order.statusHistory.map(history => ({
+        id: history.id,
+        status: history.status,
+        notes: history.notes,
+        createdAt: history.createdAt,
+        user: history.user
+      })),
+      // Shipment information
       shipments: order.shipments.map(shipment => ({
         id: shipment.id,
         trackingNumber: shipment.trackingNumber,
         barcode: shipment.barcode,
         status: shipment.status,
         lastStatusUpdate: shipment.lastStatusUpdate,
+        printUrl: shipment.printUrl,
         agency: shipment.agency,
         statusLogs: shipment.statusLogs,
         createdAt: shipment.createdAt,
         updatedAt: shipment.updatedAt
-      }))
+      })),
+      // Add computed fields for display
+      subtotal: order.items.reduce((sum, item) => sum + (Number(item.price) * item.quantity), 0),
+      totalItems: order.items.reduce((sum, item) => sum + item.quantity, 0),
+      firstProduct: order.items[0]?.product || null,
+      hasMultipleProducts: order.items.length > 1
     }
 
-    console.log("✅ Order retrieved:", order.id)
+    console.log(`✅ Full order details retrieved for order: ${order.id}`)
 
-    return NextResponse.json({ order: formattedOrder })
+    return NextResponse.json({ 
+      order: formattedOrder,
+      success: true 
+    })
   } catch (error) {
-    console.error("❌ Get order by ID API error:", error)
+    console.error("❌ Get full order details API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -48,12 +48,13 @@ export default function SettingsPage() {
   })
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
+    console.log("Updated profile data:", profileData)
     e.preventDefault()
     if (!user) return
 
     setProfileLoading(true)
     try {
-      const updatedUser = await updateProfile(user.id, profileData)
+      const updatedUser = await updateProfile(profileData)
       if (updatedUser) {
         toast({
           title: t("success"),
@@ -95,7 +96,7 @@ export default function SettingsPage() {
 
     setPasswordLoading(true)
     try {
-      const success = await changePassword(user.id, passwordData.currentPassword, passwordData.newPassword)
+      const success = await changePassword(passwordData)
       if (success) {
         setPasswordData({
           currentPassword: "",
@@ -114,9 +115,10 @@ export default function SettingsPage() {
         })
       }
     } catch (error) {
+      console.error("Password change error:", error)
       toast({
         title: t("error"),
-        description: t("failedToChangePassword"),
+        description: t("failedToChangePassword") + " - " + (error instanceof Error ? error.message : ""),
         variant: "destructive",
       })
     } finally {

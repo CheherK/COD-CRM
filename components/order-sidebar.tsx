@@ -292,7 +292,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
         conditionalStatuses.push(
           { value: "CONFIRMED", label: t("confirmed") },
           { value: "REJECTED", label: t("rejected") },
-          { value: "ATTEMPTED", label: `${t("attempt")} ${attemptCount || 1}` }
+          { value: "ATTEMPTED", label: t("attempted") }
         )
         break
 
@@ -658,6 +658,9 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                       )}
                       {orderData.status === 'REJECTED' && (
                         <p>❌ {t("rejectedHelpText")}</p>
+                      )}
+                      {orderData.status === 'ABANDONED' && (
+                        <p>❓ {t("abandonedHelpText")}</p>
                       )}
                     </div>
                   </div>

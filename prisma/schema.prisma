@@ -210,7 +210,7 @@ enum DeliveryStatus {
 }
 
 enum CredentialsType {
-  username_password
+  username_password 
   email_password
   api_key
 }

@@ -143,7 +143,7 @@ export async function updateProfile(profileData: UpdateProfileData): Promise<Aut
   }
 }
 
-export async function changePassword(passwordData: ChangePasswordData): Promise<void> {
+export async function changePassword(passwordData: ChangePasswordData): Promise<Boolean> {
   try {
     console.log("🔍 Changing password...")
 
@@ -162,6 +162,7 @@ export async function changePassword(passwordData: ChangePasswordData): Promise<
     }
 
     console.log("✅ Password changed successfully")
+    return true
   } catch (error) {
     console.error("❌ Error changing password:", error)
     throw error

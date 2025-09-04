@@ -14,6 +14,7 @@ export interface AuthUser {
   lastName?: string
   role: "ADMIN" | "STAFF"
   status: "ENABLED" | "DISABLED"
+  phone?: string
 }
 
 export interface CreateUserData {
@@ -96,7 +97,8 @@ export async function authenticateUser(username: string, password: string): Prom
       firstName: user.firstName || undefined,
       lastName: user.lastName || undefined,
       role: user.role as "ADMIN" | "STAFF",
-      status: user.status as "ENABLED" | "DISABLED"
+      status: user.status as "ENABLED" | "DISABLED",
+      phone: user.phone || undefined,
     }
   } catch (error) {
     console.error("Authentication error:", error)

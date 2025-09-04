@@ -442,7 +442,7 @@ export default function OrdersPage() {
         </div>
         <Button onClick={handleAddOrder} className="bg-purple-600 hover:bg-purple-700 text-white">
           <Plus className="h-4 w-4 mr-2" />
-          {t("addOrder")} +
+          {t("addOrder")}
         </Button>
       </div>
 
@@ -876,7 +876,7 @@ export default function OrdersPage() {
       <OrderViewDialog 
         open={viewDialogOpen} 
         onClose={() => setViewDialogOpen(false)} 
-        order={selectedOrder} 
+        orderId={selectedOrder?.id || null} 
       />
 
       {/* Delete Confirmation Dialog */}

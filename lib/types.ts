@@ -41,6 +41,7 @@ export interface UpdateProfileData {
   lastName?: string
   email?: string
   phone?: string
+  username?: string
 }
 
 export interface ChangePasswordData {

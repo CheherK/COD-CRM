@@ -79,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (data.success && data.user) {
         console.log("✅ AuthContext: Login successful for:", data.user.username)
+        console.log("✅ AuthContext: User state updated:", data.user)
         setUser(data.user)
         return true
       } else {

@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Separator } from "@/components/ui/separator"
 import { ActivityFeed } from "@/components/activity-feed"
 import { useLanguage } from "@/contexts/language-context"
+import { CreateUserData } from "@/lib/auth-server";
 
 interface FormErrors {
   username?: string
@@ -45,6 +46,35 @@ interface NewUserForm {
   phone: string
   role: "ADMIN" | "STAFF"
 }
+
+type ErrorKey = keyof FormErrors;
+
+const toAddErrorKey = (field: keyof NewUserForm): ErrorKey | null => {
+  switch (field) {
+    case "username":
+    case "email":
+    case "password":
+    case "firstName":
+    case "lastName":
+    case "phone":
+      return field;
+    default:
+      return null; 
+  }
+};
+
+const toEditErrorKey = (field: keyof AuthUser): ErrorKey | null => {
+  switch (field) {
+    case "username":
+    case "email":
+    case "firstName":
+    case "lastName":
+    case "phone":
+      return field;
+    default:
+      return null;
+  }
+};
 
 function TeamPageContent() {
   const { t } = useLanguage()
@@ -149,42 +179,50 @@ function TeamPageContent() {
         break
     }
 
-    setFormErrors((prev) => ({
-      ...prev,
-      [field]: error,
-    }))
+    setFormErrors((prev) => {
+      const key = toAddErrorKey(field)
+      if (!key) return prev 
+
+      if (error) {
+        return { ...prev, [key]: error }
+      }
+
+      const { [key]: _removed, ...rest } = prev
+      return rest
+    })
   }
 
   // Real-time validation for edit user form
-  const handleEditUserChange = (field: string, value: string) => {
+  const handleEditUserChange = (field: keyof AuthUser, value: string) => {
     if (!editingUser) return
 
     setEditingUser((prev) => (prev ? { ...prev, [field]: value } : null))
 
-    // Validate field immediately
     let error: string | undefined
     switch (field) {
       case "username":
-        error = validateUsername(value)
-        break
+        error = validateUsername(value); break
       case "email":
-        error = validateEmail(value)
-        break
+        error = validateEmail(value); break
       case "firstName":
-        error = validateName(value, "First name")
-        break
+        error = validateName(value, "First name"); break
       case "lastName":
-        error = validateName(value, "Last name")
-        break
+        error = validateName(value, "Last name"); break
       case "phone":
-        error = validatePhone(value)
-        break
+        error = validatePhone(value); break
     }
 
-    setEditFormErrors((prev) => ({
-      ...prev,
-      [field]: error,
-    }))
+    setEditFormErrors((prev) => {
+      const key = toEditErrorKey(field)
+      if (!key) return prev
+
+      if (error) {
+        return { ...prev, [key]: error }
+      }
+
+      const { [key]: _removed, ...rest } = prev
+      return rest
+    })
   }
 
   const validateForm = (formData: NewUserForm): FormErrors => {
@@ -247,7 +285,7 @@ function TeamPageContent() {
         title: t("success"),
         description: t("userCreatedSuccessfully"),
       })
-    } catch (error: any) {
+    } catch (error: any) { 
       toast({
         title: t("error"),
         description: error.message || t("failedToCreateUser"),
@@ -281,7 +319,7 @@ function TeamPageContent() {
 
     setIsSubmitting(true)
     try {
-      const updatedUser = await updateUser(editingUser.id, editingUser)
+      const updatedUser = await updateUser(editingUser.id, editingUser as Partial<CreateUserData>)
       if (updatedUser) {
         setUsers(users.map((u) => (u.id === updatedUser.id ? updatedUser : u)))
         setIsEditUserOpen(false)

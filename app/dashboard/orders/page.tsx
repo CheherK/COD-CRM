@@ -36,6 +36,7 @@ import { useOrders } from "@/hooks/use-orders"
 import { PhoneFilter } from "@/components/phone-filter"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DeliveryStatusEnum } from "@/lib/delivery/types"
+import { ProductHover } from "@/components/product-hover";
 
 // API Types
 interface OrderData {
@@ -718,24 +719,7 @@ export default function OrdersPage() {
                           </TableCell>
                           <TableCell className="font-medium">#{order.id.slice(-8)}</TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-1 flex-wrap max-w-48">
-                              {order.items.map((item, index) => (
-                                <div key={item.id} className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-md p-1">
-                                  <div className="w-6 h-6 bg-purple-600 rounded flex items-center justify-center mr-1">
-                                    {item.product.imageUrl ? (
-                                      <img
-                                        src={item.product.imageUrl}
-                                        alt={item.product.name}
-                                        className="w-6 h-6 rounded object-cover"
-                                      />
-                                    ) : (
-                                      <Package className="h-3 w-3 text-white" />
-                                    )}
-                                  </div>
-                                  <span className="text-xs font-medium">×{item.quantity}</span>
-                                </div>
-                              ))}
-                            </div>
+                            <ProductHover items={order.items} />
                           </TableCell>
                           <TableCell className="max-w-32 truncate">{order.customerName}</TableCell>
                           <TableCell className="max-w-28">

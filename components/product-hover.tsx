@@ -22,9 +22,9 @@ interface OrderItem {
 
 interface ProductHoverProps {
   items: OrderItem[]
-  firstProduct: any
-  hasMultipleProducts: boolean
-  totalItems: number
+  firstProduct?: any
+  hasMultipleProducts?: boolean
+  totalItems?: number
 }
 
 export const ProductHover: React.FC<ProductHoverProps> = ({
@@ -36,31 +36,23 @@ export const ProductHover: React.FC<ProductHoverProps> = ({
   return (
     <HoverCard>
       <HoverCardTrigger asChild>
-        <div className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-1 rounded">
-          <div className="w-10 h-10 bg-purple-600 rounded flex items-center justify-center relative overflow-hidden">
-            {firstProduct?.imageUrl ? (
-              <img 
-                src={firstProduct.imageUrl} 
-                alt={firstProduct.name}
-                className="w-10 h-10 rounded object-cover"
-              />
-            ) : (
-              <Package className="h-5 w-5 text-white" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium truncate">
-              {firstProduct?.name || "N/A"}
+        <div className="flex items-center gap-1 flex-wrap max-w-48 cursor-pointer">
+          {items.map((item, index) => (
+            <div key={item.id} className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-md p-1 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+              <div className="w-6 h-6 bg-purple-600 rounded flex items-center justify-center mr-1">
+                {item.product.imageUrl ? (
+                  <img
+                    src={item.product.imageUrl}
+                    alt={item.product.name}
+                    className="w-6 h-6 rounded object-cover"
+                  />
+                ) : (
+                  <Package className="h-3 w-3 text-white" />
+                )}
+              </div>
+              <span className="text-xs font-medium">×{item.quantity}</span>
             </div>
-            <div className="flex items-center space-x-2 text-xs text-gray-500">
-              <span>×{totalItems}</span>
-              {hasMultipleProducts && (
-                <span className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full">
-                  +{items.length - 1} more
-                </span>
-              )}
-            </div>
-          </div>
+          ))}
         </div>
       </HoverCardTrigger>
       <HoverCardContent className="w-80" align="start">
@@ -97,7 +89,7 @@ export const ProductHover: React.FC<ProductHoverProps> = ({
           <div className="border-t pt-2">
             <div className="flex justify-between text-sm font-medium">
               <span>Total Items:</span>
-              <span>{totalItems}</span>
+              <span>{items.reduce((sum, item) => sum + item.quantity, 0)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span>Subtotal:</span>

@@ -428,17 +428,34 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
     const product = products.find(p => p.id === selectedProduct)
     if (!product) return
 
-    const newItem: OrderItem = {
-      productId: product.id,
-      quantity: 1,
-      price: product.price,
-      product
-    }
+    // Check if product already exists in the order
+    const existingItemIndex = orderData.items.findIndex(item => item.productId === product.id)
+    
+    if (existingItemIndex !== -1) {
+      // If product exists, increase quantity
+      setOrderData(prev => {
+        const newItems = [...prev.items]
+        newItems[existingItemIndex] = {
+          ...newItems[existingItemIndex],
+          quantity: newItems[existingItemIndex].quantity + 1
+        }
+        return { ...prev, items: newItems }
+      })
+    } else {
+      // If product doesn't exist, add new item with original price
+      const newItem: OrderItem = {
+        productId: product.id,
+        quantity: 1,
+        price: product.price, // Start with original price, user can edit
+        product
+      }
 
-    setOrderData(prev => ({
-      ...prev,
-      items: [...prev.items, newItem]
-    }))
+      setOrderData(prev => ({
+        ...prev,
+        items: [...prev.items, newItem]
+      }))
+    }
+    
     setSelectedProduct(undefined)
     validateField("products", true)
   }
@@ -450,6 +467,14 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
     })
     validateField("products", orderData.items.length > 1)
   }
+
+  const handleProductPriceChange = (index: number, price: number) => {
+    setOrderData(prev => {
+      const newItems = [...prev.items]
+      newItems[index] = { ...newItems[index], price }
+      return { ...prev, items: newItems }
+    })
+  } 
 
   const handleDeliveryPriceChange = (price: number) => {
     setOrderData(prev => ({
@@ -986,7 +1011,14 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                                       <Package className="h-4 w-4 text-white" />
                                     )}
                                   </div>
-                                  <span className="text-sm">{item.product?.name || "Product"}</span>
+                                  <div>
+                                    <span className="text-sm font-medium">{item.product?.name || "Product"}</span>
+                                    {item.price !== item.product?.price && (
+                                      <div className="text-xs text-muted-foreground">
+                                        Original: {item.product?.price?.toFixed(2)}TND
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -1000,7 +1032,18 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                                   className="w-16"
                                 />
                               </TableCell>
-                              <TableCell>{item.price.toFixed(2)}TND</TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="1.00"
+                                  value={item.price}
+                                  onChange={(e) =>
+                                    handleProductPriceChange(index, Number.parseFloat(e.target.value) || 0)
+                                  }
+                                  className="w-20 text-right"
+                                />
+                              </TableCell>
                               <TableCell className="font-medium">{(item.price * item.quantity).toFixed(2)}TND</TableCell>
                               <TableCell>
                                 <Button

@@ -80,10 +80,14 @@ interface OrdersFilters {
   search?: string
   phoneSearch?: string
   status?: string
-  date?: string
+  dateFrom?: string
+  dateTo?: string
   timeRange?: TimeRange
   page?: number
   limit?: number
+  product?: string
+  city?: string
+  deliveryAgency?: string
 }
 
 interface OrdersPagination {
@@ -143,8 +147,20 @@ export function useOrders() {
 
   // Generate cache key
   const getCacheKey = useCallback((filters: OrdersFilters) => {
-    const { search, phoneSearch, status, timeRange, page, limit } = filters
-    return `${timeRange || '2weeks'}_${status || 'all'}_${search || ''}_${phoneSearch || ''}_${page || 1}_${limit || 20}`
+    const { search, phoneSearch, status, timeRange, dateFrom, dateTo, page, limit, product, city, deliveryAgency } = filters
+    return [
+      timeRange || "2weeks",
+      status || "all",
+      search || "",
+      phoneSearch || "",
+      dateFrom || "",
+      dateTo || "",
+      page || 1,
+      limit || 20,
+      product || "__all__",
+      city || "__all__",
+      deliveryAgency || "__all__"
+    ].join("_")
   }, [])
 
   // Check if cache is valid
@@ -159,6 +175,7 @@ export function useOrders() {
     const cached = cacheRef.current[cacheKey]
     
     if (isCacheValid(cached)) {
+      console.log("Using cached data for filters:", filters)
       return cached
     }
     return null
@@ -179,10 +196,11 @@ export function useOrders() {
   // Fetch orders from API
   const fetchOrders = useCallback(async (
     customFilters?: OrdersFilters, 
-    options: { background?: boolean; skipCache?: boolean } = {}
+    options: { background?: boolean; skipCache?: boolean; useFullApi?: boolean } = {}
   ) => {
     const currentFilters = customFilters || filters
-    const { background = false, skipCache = false } = options
+    console.log("Fetching orders with filters:", currentFilters)
+    const { background = false, skipCache = false, useFullApi = false } = options
 
     // Check cache first (unless skipCache is true)
     if (!skipCache) {
@@ -211,10 +229,6 @@ export function useOrders() {
       const searchParams = new URLSearchParams()
       
       // Build query parameters
-      if (currentFilters.timeRange) {
-        searchParams.append('timeRange', currentFilters.timeRange)
-      }
-      
       if (currentFilters.search?.trim()) {
         searchParams.append('search', currentFilters.search.trim())
       }
@@ -231,10 +245,43 @@ export function useOrders() {
         searchParams.append('status', currentFilters.status)
       }
       
+      // Handle date filtering - use specific dates if provided, otherwise use timeRange
+      if (currentFilters.dateFrom || currentFilters.dateTo) {
+        // Use date range filtering (full API)
+        if (currentFilters.dateFrom) {
+          searchParams.append('dateFrom', new Date(currentFilters.dateFrom).toISOString())
+        }
+        if (currentFilters.dateTo) {
+          const d = new Date(currentFilters.dateTo)
+          d.setHours(23, 59, 59, 999)
+          searchParams.append('dateTo', d.toISOString())
+        }
+      } else if (currentFilters.timeRange) {
+        // Use time range filtering (recent API)
+        searchParams.append('timeRange', currentFilters.timeRange)
+      }
+      
       searchParams.append('page', (currentFilters.page || 1).toString())
       searchParams.append('limit', (currentFilters.limit || 20).toString())
+      if (currentFilters.product && currentFilters.product !== "__all__") {
+        console.log("📦 Adding product filter:", currentFilters.product)
+        searchParams.append("product", currentFilters.product)
+      }
 
-      const response = await fetch(`/api/orders/recent?${searchParams}`)
+      if (currentFilters.city && currentFilters.city !== "__all__") {
+        searchParams.append("city", currentFilters.city)
+      }
+
+      if (currentFilters.deliveryAgency && currentFilters.deliveryAgency !== "__all__") {
+        searchParams.append("deliveryAgency", currentFilters.deliveryAgency)
+      }
+
+      // Choose API endpoint based on date filtering
+      const apiEndpoint = (useFullApi || currentFilters.dateFrom || currentFilters.dateTo) 
+        ? '/api/orders' 
+        : '/api/orders/recent'
+
+      const response = await fetch(`${apiEndpoint}?${searchParams}`)
       const data = await response.json()
 
       if (!response.ok) {
@@ -260,7 +307,7 @@ export function useOrders() {
         filters: currentFilters
       })
       
-      console.log(`✅ Fetched ${newOrders.length} orders (${background ? 'background' : 'foreground'})`)
+      console.log(`✅ Fetched ${newOrders.length} orders (${background ? 'background' : 'foreground'}) from ${apiEndpoint}`)
       
       return { success: true, fromCache: false }
       
@@ -336,41 +383,64 @@ export function useOrders() {
       const updatedFilters = { ...filters, ...searchFilters, page: 1 }
       setFilters(updatedFilters)
       fetchOrders(updatedFilters)
-    }, 300) // 300ms debounce
+    }, 150) // 300ms debounce
   }, [filters, fetchOrders])
 
   // Update filters with smart caching
-  const updateFilters = useCallback((newFilters: Partial<OrdersFilters>) => {
-    // Handle search with debouncing
-    if (newFilters.search !== undefined || newFilters.phoneSearch !== undefined) {
-      debouncedSearch(newFilters)
-      return
-    }
+const updateFilters = useCallback((newFilters: Partial<OrdersFilters>) => {
+  console.log("Updating filters:", newFilters)
+  // Handle search with debouncing
+  if (newFilters.search !== undefined || newFilters.phoneSearch !== undefined) {
+    debouncedSearch(newFilters)
+    return
+  }
 
-    // For other filters, update immediately
-    const updatedFilters = { ...filters, ...newFilters }
-    
-    // Reset to page 1 when filters change (except for page changes)
-    if (!newFilters.page) {
-      updatedFilters.page = 1
+  const updatedFilters = { ...filters, ...newFilters }
+  
+  if (!newFilters.page) {
+    updatedFilters.page = 1
+  }
+
+  if (newFilters.dateFrom !== undefined || newFilters.dateTo !== undefined) {
+    updatedFilters.timeRange = undefined
+  } else if (newFilters.timeRange !== undefined) {
+    updatedFilters.dateFrom = undefined
+    updatedFilters.dateTo = undefined
+  }
+
+  setFilters(updatedFilters)
+
+  const useFullApi = !!updatedFilters.dateFrom || !!updatedFilters.dateTo
+  const cached = getCachedData(updatedFilters)
+
+  if (cached) {
+    setOrders(cached.orders)
+    setPagination(cached.pagination)
+  } else {
+    fetchOrders(updatedFilters, { useFullApi })
+  }
+}, [filters, getCachedData, fetchOrders])
+
+
+  // New method to handle date range filtering specifically
+  const updateDateRange = useCallback((dateFrom?: string, dateTo?: string) => {
+    const updatedFilters = { 
+      ...filters, 
+      dateFrom, 
+      dateTo, 
+      timeRange: undefined, // Clear timeRange when using date range
+      page: 1 
     }
     
     setFilters(updatedFilters)
-    
-    // Check cache first, then fetch if needed
-    const cached = getCachedData(updatedFilters)
-    if (cached) {
-      setOrders(cached.orders)
-      setPagination(cached.pagination)
-    } else {
-      fetchOrders(updatedFilters)
-    }
-  }, [filters, debouncedSearch, getCachedData, fetchOrders])
+    fetchOrders(updatedFilters, { useFullApi: true })
+  }, [filters, fetchOrders])
 
   // Background refresh for current data
   const backgroundRefresh = useCallback(() => {
     if (!backgroundLoading && orders.length > 0) {
-      fetchOrders(filters, { background: true })
+      const useFullApi = !!filters.dateFrom || !!filters.dateTo
+      fetchOrders(filters, { background: true, useFullApi })
     }
   }, [filters, backgroundLoading, orders.length, fetchOrders])
 
@@ -410,7 +480,8 @@ export function useOrders() {
       } else {
         // Clear cache and refresh orders after other actions
         cacheRef.current = {}
-        await fetchOrders(filters, { skipCache: true })
+        const useFullApi = !!filters.dateFrom || !!filters.dateTo
+        await fetchOrders(filters, { skipCache: true, useFullApi })
         
         const actionMessages = {
           delete: t("ordersDeletedSuccessfully"),
@@ -442,6 +513,32 @@ export function useOrders() {
       action: "delete"
     })
   }, [performBulkAction])
+
+  // Clear all filters
+  const clearFilters = () => {
+    const defaultFilters: OrdersFilters = {
+      page: 1,
+      limit: 20,
+      timeRange: "2weeks"
+    }
+
+    setFilters(defaultFilters)
+    cacheRef.current = {}
+    fetchOrders(defaultFilters, { skipCache: true })
+  }
+
+  const clearAdvancedFilters = useCallback(() => {
+    const clearedFilters = {
+      ...filters,
+      product: undefined,
+      city: undefined,
+      deliveryAgency: undefined,
+      page: 1
+    }
+    setFilters(clearedFilters)
+    fetchOrders(clearedFilters, { skipCache: true })
+  }, [filters, fetchOrders])
+
 
   // Helper functions
   const getOrdersByStatus = useCallback((status?: OrderStatus) => {
@@ -528,8 +625,11 @@ export function useOrders() {
     fetchOrders,
     fetchFullOrder,
     updateFilters,
+    updateDateRange,
     performBulkAction,
     deleteOrder,
+    clearFilters,
+    clearAdvancedFilters,
 
     // Helpers
     getOrdersByStatus,
@@ -538,7 +638,9 @@ export function useOrders() {
 
     // Cache utilities
     clearCache: () => { cacheRef.current = {} },
-    refreshData: () => fetchOrders(filters, { skipCache: true })
+    refreshData: () => {
+      const useFullApi = !!filters.dateFrom || !!filters.dateTo
+      return fetchOrders(filters, { skipCache: true, useFullApi })
+    }
   }
 }
-      

@@ -35,7 +35,8 @@ import { useLanguage } from "@/contexts/language-context"
 import { useOrders } from "@/hooks/use-orders"
 import { PhoneFilter } from "@/components/phone-filter"
 import { Skeleton } from "@/components/ui/skeleton"
-import { DeliveryStatusEnum } from "@/lib/delivery/types";
+import { DeliveryStatusEnum } from "@/lib/delivery/types"
+import { clear } from "console";
 
 // API Types
 interface OrderData {
@@ -115,8 +116,10 @@ export default function OrdersPage() {
     pagination,
     filters,
     updateFilters,
+    updateDateRange,
     performBulkAction,
     deleteOrder,
+    clearFilters,
     getOrdersByStatus,
     getStatusCounts,
     goToPage,
@@ -129,9 +132,9 @@ export default function OrdersPage() {
   const [recentPhoneNumbers, setRecentPhoneNumbers] = useState<string[]>([])
 
   // Local filter states (for advanced filters)
-  const [productFilter, setProductFilter] = useState("")
-  const [cityFilter, setCityFilter] = useState("")
-  const [deliveryFilter, setDeliveryFilter] = useState("")
+  const [productFilter, setProductFilter] = useState<string>("")
+  const [cityFilter, setCityFilter] = useState<string>("")
+  const [deliveryFilter, setDeliveryFilter] = useState<string>("")
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
   const [showAllOrders, setShowAllOrders] = useState(false)
   const [advancedFilterOpen, setAdvancedFilterOpen] = useState(false)
@@ -169,11 +172,13 @@ export default function OrdersPage() {
 
   // Handle date range changes
   useEffect(() => {
-    const newDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined
-    if (newDate !== filters.date) {
-      updateFilters({ date: newDate })
+    if (dateRange?.from) {
+      const startDate = format(dateRange.from, 'yyyy-MM-dd')
+      const endDate = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : startDate
+      
+      updateDateRange(startDate, endDate)
     }
-  }, [dateRange, filters.date, updateFilters])
+  }, [dateRange]) 
 
   const fetchProducts = async () => {
     try {
@@ -181,7 +186,7 @@ export default function OrdersPage() {
       const data = await response.json()
       
       if (response.ok) {
-        setProducts(data.products)
+        setProducts(data.products || [])
       }
     } catch (error) {
       console.error('Failed to fetch products:', error)
@@ -194,7 +199,7 @@ export default function OrdersPage() {
       const data = await response.json()
       
       if (response.ok) {
-        setDeliveryAgencies(data.agencies)
+        setDeliveryAgencies(data.agencies || [])
       }
     } catch (error) {
       console.error('Failed to fetch delivery agencies:', error)
@@ -393,6 +398,11 @@ export default function OrdersPage() {
     setDeliveryFilter("")
   }
 
+  const clearAllFilters = () => {
+    clearFilters()
+    clearAdvancedFilters()
+  }
+
   const hasAdvancedFilters = productFilter || cityFilter || deliveryFilter
 
   // Get counts for tabs from the hook
@@ -405,15 +415,7 @@ export default function OrdersPage() {
         <TableRow key={index}>
           <TableCell><Skeleton className="h-4 w-4" /></TableCell>
           <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-          <TableCell>
-            <div className="flex items-center space-x-2">
-              <Skeleton className="h-10 w-10 rounded" />
-              <div className="space-y-1">
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-3 w-12" />
-              </div>
-            </div>
-          </TableCell>
+          <TableCell><Skeleton className="h-12 w-32" /></TableCell>
           <TableCell><Skeleton className="h-4 w-24" /></TableCell>
           <TableCell><Skeleton className="h-4 w-16" /></TableCell>
           <TableCell><Skeleton className="h-4 w-16" /></TableCell>
@@ -421,20 +423,14 @@ export default function OrdersPage() {
           <TableCell><Skeleton className="h-4 w-20" /></TableCell>
           <TableCell><Skeleton className="h-4 w-16" /></TableCell>
           <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-          <TableCell>
-            <div className="flex space-x-2">
-              <Skeleton className="h-8 w-8 rounded-md" />
-              <Skeleton className="h-8 w-8 rounded-md" />
-              <Skeleton className="h-8 w-8 rounded-md" />
-            </div>
-          </TableCell>
+          <TableCell><Skeleton className="h-8 w-24" /></TableCell>
         </TableRow>
       ))}
     </>
   )
 
   return (
-    <div className="space-y-6 bg-white dark:bg-gray-800 min-h-screen">
+    <div className="space-y-6 p-6 bg-white dark:bg-gray-900 min-h-screen max-w-full overflow-hidden">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t("orders")}</h1>
@@ -525,6 +521,7 @@ export default function OrdersPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex flex-col lg:flex-row gap-4 items-center mb-4">
+                {/* Search by name or ID */}
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                   <Input
@@ -535,6 +532,7 @@ export default function OrdersPage() {
                   />
                 </div>
 
+                {/* Search by phone number */}
                 <div className="relative flex-1">
                   <PhoneFilter
                     value={filters.phoneSearch || ""}
@@ -544,6 +542,7 @@ export default function OrdersPage() {
                   />
                 </div>
 
+                {/* Status Filter */}
                 <Select 
                   value={filters.status || "all"} 
                   onValueChange={(status) => updateFilters({ status })}
@@ -561,6 +560,7 @@ export default function OrdersPage() {
                   </SelectContent>
                 </Select>
 
+                {/* Show All Orders */}
                 <div className="flex items-center space-x-2">
                   <Switch id="all-orders" checked={showAllOrders} onCheckedChange={setShowAllOrders} />
                   <label htmlFor="all-orders" className="text-sm font-medium">
@@ -615,84 +615,97 @@ export default function OrdersPage() {
                   </PopoverContent>
                 </Popover>
 
-                <Collapsible open={advancedFilterOpen} onOpenChange={setAdvancedFilterOpen}>
-                  <CollapsibleTrigger asChild>
-                    <Button variant="outline" className="relative bg-transparent">
-                      <Filter className="h-4 w-4 mr-2" />
-                      {t("advancedFilter")}
-                      <ChevronDown className="h-4 w-4 ml-2" />
-                      {hasAdvancedFilters && (
-                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-600 rounded-full" />
-                      )}
-                    </Button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="absolute z-10 mt-2 right-0">
-                    <Card className="w-80 shadow-lg">
-                      <CardContent className="p-4 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h4 className="font-medium">{t("advancedFilter")}</h4>
-                          {hasAdvancedFilters && (
-                            <Button variant="ghost" size="sm" onClick={clearAdvancedFilters}>
-                              <X className="h-4 w-4 mr-1" />
-                              {t("clear")}
-                            </Button>
-                          )}
-                        </div>
+                <div className="relative">
+                  <Collapsible open={advancedFilterOpen} onOpenChange={setAdvancedFilterOpen}>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="outline" className="relative bg-transparent">
+                        <Filter className="h-4 w-4 mr-2" />
+                        {t("advancedFilter")}
+                        <ChevronDown className="h-4 w-4 ml-2" />
+                        {hasAdvancedFilters && (
+                          <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-600 rounded-full" />
+                        )}
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="absolute z-10 mt-2 right-0">
+                      <Card className="w-80 shadow-lg">
+                        <CardContent className="p-4 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium">{t("advancedFilter")}</h4>
+                            {hasAdvancedFilters && (
+                              <Button variant="ghost" size="sm" onClick={clearAdvancedFilters}>
+                                <X className="h-4 w-4 mr-1" />
+                                {t("clear")}
+                              </Button>
+                            )}
+                          </div>
 
-                        <div>
-                          <Label htmlFor="productFilter">{t("product")}</Label>
-                          <Select value={productFilter} onValueChange={setProductFilter}>
-                            <SelectTrigger>
-                              <SelectValue placeholder={t("allProducts")} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="">{t("allProducts")}</SelectItem>
-                              {products.map((product) => (
-                                <SelectItem key={product.id} value={product.name}>
-                                  {product.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                          <div>
+                            <Label htmlFor="productFilter">{t("product")}</Label>
+                            <Select 
+                              value={filters.product || "__all__"} 
+                              onValueChange={(value) => updateFilters({ product: value })}>
+                              <SelectTrigger>
+                                <SelectValue placeholder={t("allProducts")} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__all__">{t("allProducts")}</SelectItem>
+                                {products.map((product) => (
+                                  <SelectItem key={product.id} value={product.name}>
+                                    {product.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
 
-                        <div>
-                          <Label htmlFor="cityFilter">{t("city")}</Label>
-                          <Select value={cityFilter} onValueChange={setCityFilter}>
-                            <SelectTrigger>
-                              <SelectValue placeholder={t("allCities")} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="">{t("allCities")}</SelectItem>
-                              {tunisianCities.map((city) => (
-                                <SelectItem key={city} value={city}>
-                                  {city}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                          <div>
+                            <Label htmlFor="cityFilter">{t("city")}</Label>
+                            <Select 
+                              value={filters.city || "__all__"} 
+                              onValueChange={(value) => updateFilters({ city: value })}>
+                              <SelectTrigger>
+                                <SelectValue placeholder={t("allCities")} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__all__">{t("allCities")}</SelectItem>
+                                {tunisianCities.map((city) => (
+                                  <SelectItem key={city} value={city}>
+                                    {city}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
 
-                        <div>
-                          <Label htmlFor="deliveryFilter">{t("deliveryAgency")}</Label>
-                          <Select value={deliveryFilter} onValueChange={setDeliveryFilter}>
-                            <SelectTrigger>
-                              <SelectValue placeholder={t("allAgencies")} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="">{t("allAgencies")}</SelectItem>
-                              {deliveryAgencies.filter(agency => agency.enabled && agency.configured).map((agency) => (
-                                <SelectItem key={agency.id} value={agency.name}>
-                                  {agency.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </CollapsibleContent>
-                </Collapsible>
+                          <div>
+                            <Label htmlFor="deliveryFilter">{t("deliveryAgency")}</Label>
+                            <Select 
+                              value={filters.deliveryAgency || "__all__"} 
+                              onValueChange={(value) => updateFilters({ deliveryAgency: value })}>
+                              <SelectTrigger>
+                                <SelectValue placeholder={t("allAgencies")} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__all__">{t("allAgencies")}</SelectItem>
+                                {deliveryAgencies.filter(a => a.enabled && a.configured).map((agency) => (
+                                  <SelectItem key={agency.id} value={agency.name}>
+                                    {agency.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </div>
+
+                <Button onClick={() => clearAllFilters()}>
+                  <X className="h-4 w-4 mr-2" />
+                  {t("clearFilters")}
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -713,16 +726,16 @@ export default function OrdersPage() {
                           onCheckedChange={handleSelectAll}
                         />
                       </TableHead>
-                      <TableHead>{t("id")}</TableHead>
-                      <TableHead>{t("products")}</TableHead>
-                      <TableHead>{t("customer")}</TableHead>
-                      <TableHead>{t("phone")}</TableHead>
-                      <TableHead>{t("city")}</TableHead>
-                      <TableHead>{t("date")}</TableHead>
-                      <TableHead>{t("delivery")}</TableHead>
-                      <TableHead>{t("status")}</TableHead>
-                      <TableHead>{t("total")}</TableHead>
-                      <TableHead>{t("actions")}</TableHead>
+                      <TableHead className="w-20">{t("id")}</TableHead>
+                      <TableHead className="w-48">{t("products")}</TableHead>
+                      <TableHead className="w-32">{t("customer")}</TableHead>
+                      <TableHead className="w-28">{t("phone")}</TableHead>
+                      <TableHead className="w-24">{t("city")}</TableHead>
+                      <TableHead className="w-24">{t("date")}</TableHead>
+                      <TableHead className="w-28">{t("delivery")}</TableHead>
+                      <TableHead className="w-24">{t("status")}</TableHead>
+                      <TableHead className="w-20">{t("total")}</TableHead>
+                      <TableHead className="w-32">{t("actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -739,71 +752,63 @@ export default function OrdersPage() {
                           </TableCell>
                           <TableCell className="font-medium">#{order.id.slice(-8)}</TableCell>
                           <TableCell>
-                            <div className="flex items-center space-x-2">
-                              <div className="w-10 h-10 bg-purple-600 rounded flex items-center justify-center">
-                                {order.firstProduct?.imageUrl ? (
-                                  <img 
-                                    src={order.firstProduct.imageUrl} 
-                                    alt={order.firstProduct.name}
-                                    className="w-10 h-10 rounded object-cover"
-                                  />
-                                ) : (
-                                  <Package className="h-5 w-5 text-white" />
-                                )}
-                              </div>
-                              <div>
-                                <div className="text-sm font-medium">
-                                  {order.firstProduct?.name || "N/A"}
-                                </div>
-                                {order.hasMultipleProducts && (
-                                  <div className="text-xs text-gray-500">
-                                    +{order.items.length - 1} {t("moreItems")}
+                            <div className="flex items-center gap-1 flex-wrap max-w-48">
+                              {order.items.map((item, index) => (
+                                <div key={item.id} className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-md p-1">
+                                  <div className="w-6 h-6 bg-purple-600 rounded flex items-center justify-center mr-1">
+                                    {item.product.imageUrl ? (
+                                      <img 
+                                        src={item.product.imageUrl} 
+                                        alt={item.product.name}
+                                        className="w-6 h-6 rounded object-cover"
+                                      />
+                                    ) : (
+                                      <Package className="h-3 w-3 text-white" />
+                                    )}
                                   </div>
-                                )}
-                                <div className="text-xs text-gray-500">
-                                  ×{order.totalItems}
+                                  <span className="text-xs font-medium">×{item.quantity}</span>
                                 </div>
-                              </div>
+                              ))}
                             </div>
                           </TableCell>
-                          <TableCell>{order.customerName}</TableCell>
-                          <TableCell>
-                            <div>
-                              <div>{order.customerPhone1}</div>
+                          <TableCell className="max-w-32 truncate">{order.customerName}</TableCell>
+                          <TableCell className="max-w-28">
+                            <div className="text-sm">
+                              <div className="truncate">{order.customerPhone1}</div>
                               {order.customerPhone2 && (
-                                <div className="text-xs text-gray-500">{order.customerPhone2}</div>
+                                <div className="text-xs text-gray-500 truncate">{order.customerPhone2}</div>
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="text-sm text-gray-600 dark:text-gray-400">
+                          <TableCell className="text-sm text-gray-600 dark:text-gray-400 max-w-24 truncate">
                             {order.customerCity}
                           </TableCell>
-                          <TableCell className="text-sm text-gray-600 dark:text-gray-400">
-                            {format(new Date(order.createdAt), 'MMM dd, yyyy')}
+                          <TableCell className="text-sm text-gray-600 dark:text-gray-400 max-w-24">
+                            {format(new Date(order.createdAt), 'MMM dd')}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="max-w-28 truncate">
                             {order.deliveryCompany || "-"}
                           </TableCell>
                           <TableCell>
-                            <Badge className={`border ${getStatusBadgeColor(order.status, order.attemptCount)} text-center`}>
+                            <Badge className={`border ${getStatusBadgeColor(order.status, order.attemptCount)} text-center text-xs whitespace-nowrap`}>
                               {getStatusDisplayText(order.status, order.attemptCount)}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-medium">
+                          <TableCell className="font-medium text-sm">
                             {order.total.toFixed(2)} TND
                           </TableCell>
                           <TableCell>
-                            <div className="flex space-x-2">
-                              <Button variant="ghost" size="sm" onClick={() => handleViewOrder(order)}>
+                            <div className="flex space-x-1">
+                              <Button variant="ghost" size="sm" onClick={() => handleViewOrder(order)} className="h-8 w-8 p-0">
                                 <Eye className="h-4 w-4" />
                               </Button>
-                              <Button variant="ghost" size="sm" onClick={() => handleEditOrder(order)}>
+                              <Button variant="ghost" size="sm" onClick={() => handleEditOrder(order)} className="h-8 w-8 p-0">
                                 <Edit className="h-4 w-4" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="text-red-600 hover:text-red-700"
+                                className="text-red-600 hover:text-red-700 h-8 w-8 p-0"
                                 onClick={() => handleDeleteOrder(order)}
                               >
                                 <Trash2 className="h-4 w-4" />

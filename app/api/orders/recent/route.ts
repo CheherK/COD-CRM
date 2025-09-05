@@ -8,13 +8,11 @@ export async function GET(request: NextRequest) {
     console.log("=== GET RECENT ORDERS API CALLED ===")
 
     const token = request.cookies.get("auth-token")?.value
-
     if (!token) {
       return NextResponse.json({ error: "No token provided" }, { status: 401 })
     }
 
     const user = verifyToken(token)
-
     if (!user) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
@@ -26,168 +24,160 @@ export async function GET(request: NextRequest) {
     const page = Number.parseInt(searchParams.get("page") || "1")
     const limit = Number.parseInt(searchParams.get("limit") || "20")
 
+    const product = searchParams.get("product")
+    const city = searchParams.get("city")
+    const deliveryAgency = searchParams.get("deliveryAgency")
+
     // Build date filter based on time range
-    let dateFilter = {}
+    let dateFilter: any = {}
     const now = new Date()
-    
+
     switch (timeRange) {
       case "2weeks":
-        const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
-        dateFilter = { gte: twoWeeksAgo }
+        dateFilter = { gte: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000) }
         break
       case "1month":
-        const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-        dateFilter = { gte: oneMonthAgo }
+        dateFilter = { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) }
         break
       case "all":
-        // No date filter for all orders
         break
     }
 
     // Build where clause
     let whereClause: any = {}
-    
+
     if (Object.keys(dateFilter).length > 0) {
       whereClause.createdAt = dateFilter
     }
 
-    // Filter by status
+    // Status filter
     if (status && status !== "all") {
       whereClause.status = status
     }
 
-    // Enhanced search filter
+    // Search filter
     if (search) {
       whereClause.OR = [
-        // Search by phone numbers (primary priority)
-        {
-          customerPhone1: {
-            contains: search,
-            mode: 'insensitive'
-          }
-        },
-        {
-          customerPhone2: {
-            contains: search,
-            mode: 'insensitive'
-          }
-        },
-        // Search by customer name
-        {
-          customerName: {
-            contains: search,
-            mode: 'insensitive'
-          }
-        },
-        // Search by order ID
-        {
-          id: {
-            contains: search,
-            mode: 'insensitive'
-          }
-        },
-        // Search by product name through items relation
+        { customerPhone1: { contains: search, mode: "insensitive" } },
+        { customerPhone2: { contains: search, mode: "insensitive" } },
+        { customerName: { contains: search, mode: "insensitive" } },
+        { id: { contains: search, mode: "insensitive" } },
         {
           items: {
             some: {
               product: {
                 OR: [
-                  {
-                    name: {
-                      contains: search,
-                      mode: 'insensitive'
-                    }
-                  },
-                  {
-                    nameEn: {
-                      contains: search,
-                      mode: 'insensitive'
-                    }
-                  },
-                  {
-                    nameFr: {
-                      contains: search,
-                      mode: 'insensitive'
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        }
+                  { name: { contains: search, mode: "insensitive" } },
+                  { nameEn: { contains: search, mode: "insensitive" } },
+                  { nameFr: { contains: search, mode: "insensitive" } },
+                ],
+              },
+            },
+          },
+        },
       ]
     }
 
-    // Get total count for pagination
+    // Advanced filters
+    if (product && product !== "__all__") {
+      whereClause.items = {
+        some: {
+          product: {
+            name: { contains: product, mode: "insensitive" },
+          },
+        },
+      }
+    }
+
+    if (city && city !== "__all__") {
+      whereClause.customerCity = { contains: city, mode: "insensitive" }
+    }
+
+    if (deliveryAgency && deliveryAgency !== "__all__") {
+      whereClause.shipments = {
+        some: {
+          agency: {
+            name: { contains: deliveryAgency, mode: "insensitive" },
+          },
+        },
+      }
+    }
+
+    // Count for pagination
     const totalCount = await prisma.order.count({ where: whereClause })
 
-    // Get orders with minimal data for list view - optimized query
+    // Fetch orders
     const orders = await prisma.order.findMany({
       where: whereClause,
-      select: {
-        id: true,
-        customerName: true,
-        customerPhone1: true,
-        customerPhone2: true,
-        customerEmail: true,
-        customerAddress: true,
-        customerCity: true,
-        status: true,
-        deliveryCompany: true,
-        total: true,
-        deliveryPrice: true,
-        notes: true,
-        attemptCount: true,
-        createdAt: true,
-        updatedAt: true,
-        confirmedBy: {
-          select: {
-            id: true,
-            username: true,
-            firstName: true,
-            lastName: true
-          }
-        },
-        // Minimal items data for list view
+      include: {
         items: {
-          select: {
-            id: true,
-            quantity: true,
-            price: true,
-            productId: true,
+          include: {
             product: {
               select: {
                 id: true,
                 name: true,
                 nameEn: true,
                 nameFr: true,
-                imageUrl: true
-              }
-            }
-          }
-        }
+                imageUrl: true,
+              },
+            },
+          },
+        },
+        confirmedBy: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        shipments: {
+          include: {
+            agency: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
-      orderBy: [
-        { createdAt: 'desc' },
-        { id: 'desc' }  // Secondary sort for consistency
-      ],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * limit,
-      take: limit
+      take: limit,
     })
 
-    // Format orders for response with computed fields
-    const formattedOrders = orders.map(order => ({
-      ...order,
+    const formattedOrders = orders.map((order) => ({
+      id: order.id,
+      customerName: order.customerName,
+      customerPhone1: order.customerPhone1,
+      customerPhone2: order.customerPhone2,
+      customerEmail: order.customerEmail,
+      customerAddress: order.customerAddress,
+      customerCity: order.customerCity,
+      status: order.status,
+      deliveryCompany: order.deliveryCompany,
       total: Number(order.total),
       deliveryPrice: order.deliveryPrice ? Number(order.deliveryPrice) : null,
-      items: order.items.map(item => ({
-        ...item,
-        price: Number(item.price)
+      notes: order.notes,
+      attemptCount: order.attemptCount,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      confirmedBy: order.confirmedBy,
+      items: order.items.map((item) => ({
+        id: item.id,
+        quantity: item.quantity,
+        price: Number(item.price),
+        product: item.product,
+        productId: item.productId,
       })),
-      // Add computed fields for list view
-      totalItems: order.items.reduce((sum, item) => sum + item.quantity, 0),
-      firstProduct: order.items[0]?.product || null,
-      hasMultipleProducts: order.items.length > 1
+      shipments: order.shipments.map((shipment) => ({
+        id: shipment.id,
+        trackingNumber: shipment.trackingNumber,
+        status: shipment.status,
+        agency: shipment.agency,
+        createdAt: shipment.createdAt,
+      })),
     }))
 
     console.log(`✅ Retrieved ${formattedOrders.length} orders for ${timeRange}`)
@@ -203,8 +193,8 @@ export async function GET(request: NextRequest) {
       metadata: {
         timeRange,
         totalInRange: totalCount,
-        cacheTimestamp: new Date().toISOString()
-      }
+        cacheTimestamp: new Date().toISOString(),
+      },
     })
   } catch (error) {
     console.error("❌ Get recent orders API error:", error)

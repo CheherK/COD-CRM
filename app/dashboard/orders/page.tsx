@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -36,7 +36,6 @@ import { useOrders } from "@/hooks/use-orders"
 import { PhoneFilter } from "@/components/phone-filter"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DeliveryStatusEnum } from "@/lib/delivery/types"
-import { clear } from "console";
 
 // API Types
 interface OrderData {
@@ -100,14 +99,14 @@ interface BulkOrderAction {
 }
 
 const tunisianCities = [
-  "Tunis", "Sfax", "Sousse", "Kairouan", "Bizerte", "Gabès", "Ariana", 
+  "Tunis", "Sfax", "Sousse", "Kairouan", "Bizerte", "Gabès", "Ariana",
   "Gafsa", "Monastir", "Ben Arous", "Kasserine", "Medenine", "Nabeul", "Tataouine"
 ]
 
 export default function OrdersPage() {
   const { t } = useMemo(() => useLanguage(), [])
   const { toast } = useToast()
-  
+
   // Use the orders hook
   const {
     orders,
@@ -120,6 +119,7 @@ export default function OrdersPage() {
     performBulkAction,
     deleteOrder,
     clearFilters,
+    clearAdvancedFilters,
     getOrdersByStatus,
     getStatusCounts,
     goToPage,
@@ -130,16 +130,9 @@ export default function OrdersPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [deliveryAgencies, setDeliveryAgencies] = useState<DeliveryAgency[]>([])
   const [recentPhoneNumbers, setRecentPhoneNumbers] = useState<string[]>([])
-
-  // Local filter states (for advanced filters)
-  const [productFilter, setProductFilter] = useState<string>("")
-  const [cityFilter, setCityFilter] = useState<string>("")
-  const [deliveryFilter, setDeliveryFilter] = useState<string>("")
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
   const [showAllOrders, setShowAllOrders] = useState(false)
   const [advancedFilterOpen, setAdvancedFilterOpen] = useState(false)
-
-  // UI states
   const [selectedOrders, setSelectedOrders] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState("orders")
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -148,6 +141,12 @@ export default function OrdersPage() {
   const [viewDialogOpen, setViewDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [orderToDelete, setOrderToDelete] = useState<OrderData | null>(null)
+
+    // Get counts for tabs from the hook
+  const statusCounts = getStatusCounts
+
+  // Track last applied date range to prevent unnecessary updates
+  const lastAppliedDateRange = useRef<{ startDate: string | null; endDate: string | null }>({ startDate: null, endDate: null })
 
   // Fetch initial data for products and agencies
   useEffect(() => {
@@ -165,8 +164,14 @@ export default function OrdersPage() {
         .filter((phone): phone is string => Boolean(phone))
         .filter((phone, index, arr) => arr.indexOf(phone) === index)
         .slice(0, 10)
-      
-      setRecentPhoneNumbers(phoneNumbers)
+
+      setRecentPhoneNumbers(prev => {
+        // Only update if the phone numbers have changed to avoid unnecessary re-renders
+        if (JSON.stringify(prev) !== JSON.stringify(phoneNumbers)) {
+          return phoneNumbers
+        }
+        return prev
+      })
     }
   }, [orders])
 
@@ -175,16 +180,23 @@ export default function OrdersPage() {
     if (dateRange?.from) {
       const startDate = format(dateRange.from, 'yyyy-MM-dd')
       const endDate = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : startDate
-      
-      updateDateRange(startDate, endDate)
+
+      // Only call updateDateRange if the dates have changed
+      if (
+        startDate !== lastAppliedDateRange.current.startDate ||
+        endDate !== lastAppliedDateRange.current.endDate
+      ) {
+        lastAppliedDateRange.current = { startDate, endDate }
+        updateDateRange(startDate, endDate)
+      }
     }
-  }, [dateRange]) 
+  }, [dateRange, updateDateRange])
 
   const fetchProducts = async () => {
     try {
       const response = await fetch('/api/products?limit=1000')
       const data = await response.json()
-      
+
       if (response.ok) {
         setProducts(data.products || [])
       }
@@ -197,7 +209,7 @@ export default function OrdersPage() {
     try {
       const response = await fetch('/api/delivery/agencies')
       const data = await response.json()
-      
+
       if (response.ok) {
         setDeliveryAgencies(data.agencies || [])
       }
@@ -222,7 +234,6 @@ export default function OrdersPage() {
         return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800"
       case "UPLOADED":
         return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-800"
-      // Delivery statuses (from delivery agencies)
       case "DEPOSIT":
         return "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-900/20 dark:text-cyan-300 dark:border-cyan-800"
       case "IN_TRANSIT":
@@ -232,7 +243,6 @@ export default function OrdersPage() {
       case "RETURNED":
         return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800"
       default:
-        // Attempt statuses
         if (status.startsWith('ATTEMPT_')) {
           return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800"
         }
@@ -242,7 +252,6 @@ export default function OrdersPage() {
 
   const getStatusDisplayText = (status: OrderStatus | DeliveryStatusEnum, attemptCount?: number) => {
     let statusText = ""
-    console.log("Getting display text for status:", status, "with attemptCount:", attemptCount)
     switch (status) {
       case "PENDING":
         statusText = t("pending")
@@ -283,32 +292,13 @@ export default function OrdersPage() {
       default:
         statusText = status
     }
-
     return statusText
   }
 
-  const filteredOrders = orders.filter((order) => {
-    const matchesProduct = !productFilter || 
-      order.items.some(item => 
-        item.product.name.toLowerCase().includes(productFilter.toLowerCase()) ||
-        item.product.nameEn.toLowerCase().includes(productFilter.toLowerCase()) ||
-        item.product.nameFr.toLowerCase().includes(productFilter.toLowerCase())
-      )
-
-    const matchesCity = !cityFilter || 
-      order.customerCity.toLowerCase().includes(cityFilter.toLowerCase())
-
-    const matchesDelivery = !deliveryFilter || 
-      (order.deliveryCompany && order.deliveryCompany.toLowerCase().includes(deliveryFilter.toLowerCase()))
-
-    return matchesProduct && matchesCity && matchesDelivery
-  })
-
   const getOrdersByTab = (tab: string) => {
     if (showAllOrders) {
-      return filteredOrders
+      return orders
     }
-
     switch (tab) {
       case "abandoned":
         return getOrdersByStatus("ABANDONED")
@@ -322,8 +312,8 @@ export default function OrdersPage() {
   }
 
   const handleSelectOrder = (orderId: string) => {
-    setSelectedOrders(prev => 
-      prev.includes(orderId) 
+    setSelectedOrders(prev =>
+      prev.includes(orderId)
         ? prev.filter(id => id !== orderId)
         : [...prev, orderId]
     )
@@ -352,16 +342,15 @@ export default function OrdersPage() {
 
   const confirmDeleteOrder = async () => {
     if (!orderToDelete) return
-
     const result = await deleteOrder(orderToDelete.id)
-    
+
     if (result.success) {
       toast({
         title: t("success"),
         description: t("orderDeletedSuccessfully"),
       })
     }
-    
+
     setDeleteDialogOpen(false)
     setOrderToDelete(null)
   }
@@ -392,23 +381,14 @@ export default function OrdersPage() {
     })
   }
 
-  const clearAdvancedFilters = () => {
-    setProductFilter("")
-    setCityFilter("")
-    setDeliveryFilter("")
-  }
-
   const clearAllFilters = () => {
     clearFilters()
-    clearAdvancedFilters()
+    setDateRange(undefined)
+    lastAppliedDateRange.current = { startDate: null, endDate: null }
   }
 
-  const hasAdvancedFilters = productFilter || cityFilter || deliveryFilter
+  const hasAdvancedFilters = filters.product || filters.city || filters.deliveryAgency
 
-  // Get counts for tabs from the hook
-  const statusCounts = getStatusCounts
-
-  // Skeleton loading component
   const TableSkeleton = () => (
     <>
       {Array.from({ length: 10 }).map((_, index) => (
@@ -442,7 +422,6 @@ export default function OrdersPage() {
         </Button>
       </div>
 
-      {/* Background loading indicator */}
       {backgroundLoading && (
         <div className="fixed top-4 right-4 z-50">
           <div className="flex items-center bg-white dark:bg-gray-800 shadow-md rounded-md px-3 py-2 text-sm">
@@ -452,7 +431,6 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Bulk Actions */}
       {selectedOrders.length > 0 && (
         <Card>
           <CardContent className="pt-6">
@@ -517,11 +495,9 @@ export default function OrdersPage() {
         </TabsList>
 
         <TabsContent value={activeTab} className="space-y-4">
-          {/* Filters */}
           <Card>
             <CardContent className="pt-6">
               <div className="flex flex-col lg:flex-row gap-4 items-center mb-4">
-                {/* Search by name or ID */}
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                   <Input
@@ -531,8 +507,6 @@ export default function OrdersPage() {
                     className="pl-10"
                   />
                 </div>
-
-                {/* Search by phone number */}
                 <div className="relative flex-1">
                   <PhoneFilter
                     value={filters.phoneSearch || ""}
@@ -541,10 +515,8 @@ export default function OrdersPage() {
                     placeholder={t("searchByPhone")}
                   />
                 </div>
-
-                {/* Status Filter */}
-                <Select 
-                  value={filters.status || "all"} 
+                <Select
+                  value={filters.status || "all"}
                   onValueChange={(status) => updateFilters({ status })}
                 >
                   <SelectTrigger className="w-full lg:w-48">
@@ -559,8 +531,6 @@ export default function OrdersPage() {
                     <SelectItem value="ARCHIVED">{t("archived")}</SelectItem>
                   </SelectContent>
                 </Select>
-
-                {/* Show All Orders */}
                 <div className="flex items-center space-x-2">
                   <Switch id="all-orders" checked={showAllOrders} onCheckedChange={setShowAllOrders} />
                   <label htmlFor="all-orders" className="text-sm font-medium">
@@ -569,8 +539,8 @@ export default function OrdersPage() {
                 </div>
               </div>
               <div className="flex flex-col lg:flex-row gap-4 items-center">
-                <Select 
-                  value={filters.timeRange || "2weeks"} 
+                <Select
+                  value={filters.timeRange || "2weeks"}
                   onValueChange={(timeRange) => updateFilters({ timeRange: timeRange as any })}
                 >
                   <SelectTrigger className="w-full">
@@ -582,7 +552,6 @@ export default function OrdersPage() {
                     <SelectItem value="all">{t("allOrders")}</SelectItem>
                   </SelectContent>
                 </Select>
-
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -614,7 +583,6 @@ export default function OrdersPage() {
                     />
                   </PopoverContent>
                 </Popover>
-
                 <div className="relative">
                   <Collapsible open={advancedFilterOpen} onOpenChange={setAdvancedFilterOpen}>
                     <CollapsibleTrigger asChild>
@@ -639,12 +607,12 @@ export default function OrdersPage() {
                               </Button>
                             )}
                           </div>
-
                           <div>
                             <Label htmlFor="productFilter">{t("product")}</Label>
-                            <Select 
-                              value={filters.product || "__all__"} 
-                              onValueChange={(value) => updateFilters({ product: value })}>
+                            <Select
+                              value={filters.product || "__all__"}
+                              onValueChange={(value) => updateFilters({ product: value === "__all__" ? undefined : value })}
+                            >
                               <SelectTrigger>
                                 <SelectValue placeholder={t("allProducts")} />
                               </SelectTrigger>
@@ -658,12 +626,12 @@ export default function OrdersPage() {
                               </SelectContent>
                             </Select>
                           </div>
-
                           <div>
                             <Label htmlFor="cityFilter">{t("city")}</Label>
-                            <Select 
-                              value={filters.city || "__all__"} 
-                              onValueChange={(value) => updateFilters({ city: value })}>
+                            <Select
+                              value={filters.city || "__all__"}
+                              onValueChange={(value) => updateFilters({ city: value === "__all__" ? undefined : value })}
+                            >
                               <SelectTrigger>
                                 <SelectValue placeholder={t("allCities")} />
                               </SelectTrigger>
@@ -677,12 +645,12 @@ export default function OrdersPage() {
                               </SelectContent>
                             </Select>
                           </div>
-
                           <div>
                             <Label htmlFor="deliveryFilter">{t("deliveryAgency")}</Label>
-                            <Select 
-                              value={filters.deliveryAgency || "__all__"} 
-                              onValueChange={(value) => updateFilters({ deliveryAgency: value })}>
+                            <Select
+                              value={filters.deliveryAgency || "__all__"}
+                              onValueChange={(value) => updateFilters({ deliveryAgency: value === "__all__" ? undefined : value })}
+                            >
                               <SelectTrigger>
                                 <SelectValue placeholder={t("allAgencies")} />
                               </SelectTrigger>
@@ -701,8 +669,7 @@ export default function OrdersPage() {
                     </CollapsibleContent>
                   </Collapsible>
                 </div>
-
-                <Button onClick={() => clearAllFilters()}>
+                <Button onClick={clearAllFilters}>
                   <X className="h-4 w-4 mr-2" />
                   {t("clearFilters")}
                 </Button>
@@ -710,7 +677,6 @@ export default function OrdersPage() {
             </CardContent>
           </Card>
 
-          {/* Orders Table */}
           <Card>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -757,8 +723,8 @@ export default function OrdersPage() {
                                 <div key={item.id} className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-md p-1">
                                   <div className="w-6 h-6 bg-purple-600 rounded flex items-center justify-center mr-1">
                                     {item.product.imageUrl ? (
-                                      <img 
-                                        src={item.product.imageUrl} 
+                                      <img
+                                        src={item.product.imageUrl}
                                         alt={item.product.name}
                                         className="w-6 h-6 rounded object-cover"
                                       />
@@ -820,8 +786,6 @@ export default function OrdersPage() {
                     )}
                   </TableBody>
                 </Table>
-
-                {/* No orders message */}
                 {!loading && getOrdersByTab(activeTab).length === 0 && (
                   <div className="text-center py-8">
                     <p className="text-gray-500 dark:text-gray-400">
@@ -833,7 +797,6 @@ export default function OrdersPage() {
             </CardContent>
           </Card>
 
-          {/* Pagination */}
           {pagination.pages > 1 && (
             <Card>
               <CardContent className="pt-6">
@@ -842,9 +805,9 @@ export default function OrdersPage() {
                     {t("showing")} {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} {t("of")} {pagination.total} {t("orders")}
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => goToPage(pagination.page - 1)}
                       disabled={pagination.page <= 1}
                     >
@@ -853,9 +816,9 @@ export default function OrdersPage() {
                     <span className="text-sm">
                       {t("page")} {pagination.page} {t("of")} {pagination.pages}
                     </span>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => goToPage(pagination.page + 1)}
                       disabled={pagination.page >= pagination.pages}
                     >
@@ -869,7 +832,6 @@ export default function OrdersPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Order Sidebar */}
       <OrderSidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -878,14 +840,12 @@ export default function OrdersPage() {
         onSave={handleOrderSaved}
       />
 
-      {/* View Order Dialog */}
-      <OrderViewDialog 
-        open={viewDialogOpen} 
-        onClose={() => setViewDialogOpen(false)} 
-        orderId={selectedOrder?.id || null} 
+      <OrderViewDialog
+        open={viewDialogOpen}
+        onClose={() => setViewDialogOpen(false)}
+        orderId={selectedOrder?.id || null}
       />
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

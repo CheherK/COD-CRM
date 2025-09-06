@@ -40,26 +40,45 @@ export async function GET(request: NextRequest) {
           where: { confirmedById: teamUser.id },
         })
 
+        // Completed orders are those with DELIVERED delivery status
         const completedOrders = await prisma.order.count({
           where: { 
-            confirmedById: teamUser.id, 
-            status: "DELIVERED" 
+            confirmedById: teamUser.id,
+            shipments: {
+              some: {
+                status: "DELIVERED"
+              }
+            }
           },
         })
 
+        // Processing orders are CONFIRMED, UPLOADED, or in delivery process
         const processingOrders = await prisma.order.count({
           where: { 
-            confirmedById: teamUser.id, 
-            status: { in: ["PROCESSING", "SHIPPED", "IN_TRANSIT"] }
+            confirmedById: teamUser.id,
+            OR: [
+              { status: { in: ["CONFIRMED", "UPLOADED"] } },
+              {
+                shipments: {
+                  some: {
+                    status: { in: ["DEPOSIT", "IN_TRANSIT"] }
+                  }
+                }
+              }
+            ]
           },
         })
 
-        // Calculate revenue from completed orders
+        // Calculate revenue from delivered orders
         const revenueResult = await prisma.order.aggregate({
           _sum: { total: true },
           where: { 
-            confirmedById: teamUser.id, 
-            status: "DELIVERED" 
+            confirmedById: teamUser.id,
+            shipments: {
+              some: {
+                status: "DELIVERED"
+              }
+            }
           },
         })
 

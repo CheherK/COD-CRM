@@ -25,37 +25,44 @@ export async function GET(request: NextRequest) {
     const pendingOrders = await prisma.order.count({ 
       where: { ...orderWhereClause, status: "PENDING" } 
     })
+    const abandonedOrders = await prisma.order.count({ 
+      where: { ...orderWhereClause, status: "ABANDONED" } 
+    })
+    const attemptedOrders = await prisma.order.count({ 
+      where: { ...orderWhereClause, status: "ATTEMPTED" } 
+    })
     const confirmedOrders = await prisma.order.count({ 
       where: { ...orderWhereClause, status: "CONFIRMED" } 
-    })
-    const processingOrders = await prisma.order.count({ 
-      where: { ...orderWhereClause, status: "PROCESSING" } 
-    })
-    const shippedOrders = await prisma.order.count({ 
-      where: { ...orderWhereClause, status: "SHIPPED" } 
-    })
-    const deliveredOrders = await prisma.order.count({ 
-      where: { ...orderWhereClause, status: "DELIVERED" } 
-    })
-    const returnedOrders = await prisma.order.count({ 
-      where: { ...orderWhereClause, status: "RETURNED" } 
-    })
-    const cancelledOrders = await prisma.order.count({ 
-      where: { ...orderWhereClause, status: "CANCELLED" } 
-    })
-    const inTransitOrders = await prisma.order.count({ 
-      where: { ...orderWhereClause, status: "IN_TRANSIT" } 
     })
     const uploadedOrders = await prisma.order.count({ 
       where: { ...orderWhereClause, status: "UPLOADED" } 
     })
+    const deletedOrders = await prisma.order.count({ 
+      where: { ...orderWhereClause, status: "DELETED" } 
+    })
+    const rejectedOrders = await prisma.order.count({ 
+      where: { ...orderWhereClause, status: "REJECTED" } 
+    })
+    const archivedOrders = await prisma.order.count({ 
+      where: { ...orderWhereClause, status: "ARCHIVED" } 
+    })
 
-    // Get revenue statistics (only from delivered orders)
+    // Get delivery status counts
+    const depositOrders = await prisma.deliveryShipment.count({ where: { status: "DEPOSIT" } })
+    const inTransitOrders = await prisma.deliveryShipment.count({ where: { status: "IN_TRANSIT" } })
+    const deliveredOrders = await prisma.deliveryShipment.count({ where: { status: "DELIVERED" } })
+    const returnedOrders = await prisma.deliveryShipment.count({ where: { status: "RETURNED" } })
+
+    // Get revenue from delivered orders (using DeliveryShipment status)
     const totalRevenueResult = await prisma.order.aggregate({
       _sum: { total: true },
-      where: { 
-        ...orderWhereClause, 
-        status: { in: ["DELIVERED", "SHIPPED"] } 
+      where: {
+        ...orderWhereClause,
+        shipments: {
+          some: {
+            status: "DELIVERED"
+          }
+        }
       },
     })
 
@@ -65,8 +72,12 @@ export async function GET(request: NextRequest) {
       _sum: { total: true },
       where: {
         ...orderWhereClause,
-        status: { in: ["DELIVERED", "SHIPPED"] },
-        createdAt: { gte: currentMonthStart },
+        shipments: {
+          some: {
+            status: "DELIVERED",
+            updatedAt: { gte: currentMonthStart }
+          }
+        }
       },
     })
 
@@ -76,8 +87,12 @@ export async function GET(request: NextRequest) {
       _sum: { total: true },
       where: {
         ...orderWhereClause,
-        status: { in: ["DELIVERED", "SHIPPED"] },
-        createdAt: { gte: weekAgo },
+        shipments: {
+          some: {
+            status: "DELIVERED",
+            updatedAt: { gte: weekAgo }
+          }
+        }
       },
     })
 
@@ -88,8 +103,12 @@ export async function GET(request: NextRequest) {
       _sum: { total: true },
       where: {
         ...orderWhereClause,
-        status: { in: ["DELIVERED", "SHIPPED"] },
-        createdAt: { gte: todayStart },
+        shipments: {
+          some: {
+            status: "DELIVERED",
+            updatedAt: { gte: todayStart }
+          }
+        }
       },
     })
 
@@ -132,7 +151,7 @@ export async function GET(request: NextRequest) {
       const activeShipments = await prisma.deliveryShipment.count({
         where: {
           status: {
-            in: ["PENDING", "CONFIRMED", "PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY"]
+            in: ["UPLOADED", "DEPOSIT", "IN_TRANSIT"]
           }
         }
       })
@@ -157,7 +176,7 @@ export async function GET(request: NextRequest) {
     // Calculate rates and percentages
     const deliveryRate = totalOrders > 0 ? Math.round((deliveredOrders / totalOrders) * 100 * 100) / 100 : 0
     const returnRate = totalOrders > 0 ? Math.round((returnedOrders / totalOrders) * 100 * 100) / 100 : 0
-    const completionRate = totalOrders > 0 ? Math.round(((deliveredOrders + shippedOrders) / totalOrders) * 100 * 100) / 100 : 0
+    const completionRate = totalOrders > 0 ? Math.round(((deliveredOrders + depositOrders + inTransitOrders) / totalOrders) * 100 * 100) / 100 : 0
 
     // Get recent activity count (last 24 hours)
     let recentActivityCount = 0
@@ -182,14 +201,17 @@ export async function GET(request: NextRequest) {
       orders: {
         total: totalOrders,
         pending: pendingOrders,
+        abandoned: abandonedOrders,
+        attempted: attemptedOrders,
         confirmed: confirmedOrders,
-        processing: processingOrders,
         uploaded: uploadedOrders,
+        deleted: deletedOrders,
+        rejected: rejectedOrders,
+        archived: archivedOrders,
+        deposit: depositOrders,
         inTransit: inTransitOrders,
-        shipped: shippedOrders,
         delivered: deliveredOrders,
         returned: returnedOrders,
-        cancelled: cancelledOrders,
         deliveryRate,
         returnRate,
         completionRate

@@ -20,43 +20,44 @@ export async function GET(request: NextRequest) {
 
     // Get delivery performance metrics
     const totalOrders = await prisma.order.count()
-    const shippedOrders = await prisma.order.count({ where: { status: "SHIPPED" } })
-    const deliveredOrders = await prisma.order.count({ where: { status: "DELIVERED" } })
-    const pendingOrders = await prisma.order.count({ where: { status: "PENDING" } })
-    const processingOrders = await prisma.order.count({ where: { status: "PROCESSING" } })
-    const inTransitOrders = await prisma.order.count({ where: { status: "IN_TRANSIT" } })
-    const uploadedOrders = await prisma.order.count({ where: { status: "UPLOADED" } })
-    const returnedOrders = await prisma.order.count({ where: { status: "RETURNED" } })
+    
+    // Get delivery status counts from DeliveryShipment
+    const uploadedOrders = await prisma.deliveryShipment.count({ where: { status: "UPLOADED" } })
+    const depositOrders = await prisma.deliveryShipment.count({ where: { status: "DEPOSIT" } })
+    const inTransitOrders = await prisma.deliveryShipment.count({ where: { status: "IN_TRANSIT" } })
+    const deliveredOrders = await prisma.deliveryShipment.count({ where: { status: "DELIVERED" } })
+    const returnedOrders = await prisma.deliveryShipment.count({ where: { status: "RETURNED" } })
 
     // Calculate delivery rates
     const deliveryRate = totalOrders > 0 ? (deliveredOrders / totalOrders) * 100 : 0
-    const shippingRate = totalOrders > 0 ? (shippedOrders / totalOrders) * 100 : 0
+    const shippingRate = totalOrders > 0 ? ((uploadedOrders + depositOrders + inTransitOrders) / totalOrders) * 100 : 0
     const returnRate = totalOrders > 0 ? (returnedOrders / totalOrders) * 100 : 0
 
     // Get orders by status for charts
     const ordersByStatus = [
-      { status: "PENDING", count: pendingOrders, color: "#f59e0b" },
-      { status: "PROCESSING", count: processingOrders, color: "#3b82f6" },
       { status: "UPLOADED", count: uploadedOrders, color: "#8b5cf6" },
-      { status: "IN_TRANSIT", count: inTransitOrders, color: "#6366f1" },
-      { status: "SHIPPED", count: shippedOrders, color: "#06b6d4" },
+      { status: "DEPOSIT", count: depositOrders, color: "#6366f1" },
+      { status: "IN_TRANSIT", count: inTransitOrders, color: "#06b6d4" },
       { status: "DELIVERED", count: deliveredOrders, color: "#10b981" },
       { status: "RETURNED", count: returnedOrders, color: "#ef4444" },
     ].filter(item => item.count > 0) // Only show statuses with orders
 
     // Get recent delivery activities
-    const recentDeliveries = await prisma.order.findMany({
-      where: { status: { in: ["SHIPPED", "DELIVERED", "IN_TRANSIT", "RETURNED"] } },
+    const recentDeliveries = await prisma.deliveryShipment.findMany({
+      where: { status: { in: ["UPLOADED", "DEPOSIT", "IN_TRANSIT", "DELIVERED", "RETURNED"] } },
+      include: {
+        order: {
+          select: {
+            id: true,
+            customerName: true,
+            total: true,
+            updatedAt: true,
+            createdAt: true
+          }
+        }
+      },
       orderBy: { updatedAt: "desc" },
       take: 10,
-      select: {
-        id: true,
-        customerName: true,
-        status: true,
-        total: true,
-        updatedAt: true,
-        createdAt: true
-      }
     })
 
     // Get delivery shipments analytics
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
     const activeShipments = await prisma.deliveryShipment.count({
       where: {
         status: {
-          in: ["PENDING", "CONFIRMED", "PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY"]
+          in: ["UPLOADED", "DEPOSIT", "IN_TRANSIT"]
         }
       }
     })
@@ -108,14 +109,30 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Calculate average delivery time (mock data - in real app, track actual delivery times)
-    const avgDeliveryTime = 3.5 // days
+    // Calculate average delivery time (for delivered orders)
+    const deliveredShipments = await prisma.deliveryShipment.findMany({
+      where: { status: "DELIVERED" },
+      select: {
+        createdAt: true,
+        updatedAt: true
+      }
+    })
+    
+    let totalDeliveryTime = 0
+    deliveredShipments.forEach(shipment => {
+      const deliveryTime = shipment.updatedAt.getTime() - shipment.createdAt.getTime()
+      totalDeliveryTime += deliveryTime
+    })
+    
+    const avgDeliveryTime = deliveredShipments.length > 0 
+      ? Math.round((totalDeliveryTime / deliveredShipments.length) / (1000 * 60 * 60 * 24) * 10) / 10 
+      : 0
 
     // Get monthly delivery trends (last 6 months)
     const sixMonthsAgo = new Date()
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
     
-    const monthlyDeliveries = await prisma.order.findMany({
+    const monthlyDeliveries = await prisma.deliveryShipment.findMany({
       where: {
         status: "DELIVERED",
         updatedAt: {
@@ -129,8 +146,8 @@ export async function GET(request: NextRequest) {
 
     // Group by month
     const monthlyStats: { [key: string]: number } = {}
-    monthlyDeliveries.forEach(order => {
-      const month = order.updatedAt.toISOString().substring(0, 7) // YYYY-MM format
+    monthlyDeliveries.forEach(shipment => {
+      const month = shipment.updatedAt.toISOString().substring(0, 7) // YYYY-MM format
       monthlyStats[month] = (monthlyStats[month] || 0) + 1
     })
 
@@ -143,7 +160,8 @@ export async function GET(request: NextRequest) {
       metrics: {
         totalOrders,
         deliveredOrders,
-        shippedOrders,
+        uploadedOrders,
+        depositOrders,
         inTransitOrders,
         returnedOrders,
         deliveryRate: Math.round(deliveryRate * 100) / 100,
@@ -158,13 +176,13 @@ export async function GET(request: NextRequest) {
         agencyStats,
         monthlyTrend
       },
-      recentDeliveries: recentDeliveries.map((order) => ({
-        id: order.id,
-        customerName: order.customerName,
-        status: order.status,
-        total: order.total,
-        updatedAt: order.updatedAt,
-        createdAt: order.createdAt
+      recentDeliveries: recentDeliveries.map((shipment) => ({
+        id: shipment.order.id,
+        customerName: shipment.order.customerName,
+        status: shipment.status,
+        total: shipment.order.total,
+        updatedAt: shipment.updatedAt,
+        createdAt: shipment.createdAt
       })),
     }
 

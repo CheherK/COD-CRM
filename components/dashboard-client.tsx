@@ -1,136 +1,411 @@
 "use client"
 
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ShoppingCart, Users, TrendingUp, Package } from "lucide-react"
+import { 
+  Package, 
+  Users, 
+  ShoppingCart, 
+  TrendingUp, 
+  Clock, 
+  CheckCircle, 
+  XCircle, 
+  Truck,
+  RefreshCw,
+  AlertCircle
+} from "lucide-react"
 import { ActivityFeed } from "@/components/activity-feed"
 import { useLanguage } from "@/contexts/language-context"
 
+interface DashboardStats {
+  orders: {
+    total: number
+    pending: number
+    confirmed: number
+    processing: number
+    uploaded: number
+    inTransit: number
+    shipped: number
+    delivered: number
+    returned: number
+    cancelled: number
+    deliveryRate: number
+    returnRate: number
+    completionRate: number
+  }
+  revenue: {
+    total: number
+    monthly: number
+    weekly: number
+    daily: number
+  }
+  users?: {
+    total: number
+    active: number
+    disabled: number
+    admins: number
+    staff: number
+  }
+  products?: {
+    total: number
+    active: number
+    inactive: number
+  }
+  delivery?: {
+    totalShipments: number
+    activeShipments: number
+    completedShipments: number
+    totalAgencies: number
+    enabledAgencies: number
+  }
+  activity: {
+    recent: number
+  }
+}
+
+interface UserInfo {
+  id: string
+  username: string
+  role: string
+}
+
+interface RecentOrder {
+  id: string
+  customerName: string
+  status: string
+  total: number | string
+  createdAt: string
+}
+
 export function DashboardClient() {
   const { t } = useLanguage()
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [user, setUser] = useState<UserInfo | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([])
 
-  const stats = [
-    {
-      title: t("totalOrders"),
-      value: "1,234",
-      description: `+20.1% ${t("fromLastMonth")}`,
-      icon: ShoppingCart,
-      color: "text-blue-600",
-    },
-    {
-      title: t("pendingOrders"),
-      value: "89",
-      description: t("awaitingConfirmation"),
-      icon: Package,
-      color: "text-yellow-600",
-    },
-    {
-      title: t("teamMembers"),
-      value: "12",
-      description: t("activeStaffMembers"),
-      icon: Users,
-      color: "text-green-600",
-    },
-    {
-      title: t("revenue"),
-      value: "$45,231",
-      description: `+15% ${t("fromLastMonth")}`,
-      icon: TrendingUp,
-      color: "text-purple-600",
-    },
-  ]
+  const fetchStats = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      const response = await fetch('/api/stats')
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setStats(data.stats)
+        setUser(data.user)
+      } else {
+        throw new Error(data.error || 'Failed to fetch stats')
+      }
+    } catch (error) {
+      console.error('Failed to fetch dashboard stats:', error)
+      setError(error instanceof Error ? error.message : 'Failed to load dashboard')
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const recentOrders = [
-    { id: "ORD-001", customer: "John Doe", status: "PENDING", total: "$125.00" },
-    { id: "ORD-002", customer: "Jane Smith", status: "CONFIRMED", total: "$89.50" },
-    { id: "ORD-003", customer: "Mike Johnson", status: "DELIVERED", total: "$234.75" },
-    { id: "ORD-004", customer: "Sarah Wilson", status: "ATTEMPT", total: "$156.25" },
-  ]
+  const fetchRecentOrders = async () => {
+    try {
+      const response = await fetch('/api/orders?limit=5&sortBy=createdAt&sortOrder=desc')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setRecentOrders(data.orders || [])
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch recent orders:', error)
+    }
+  }
+
+  useEffect(() => {
+    fetchStats()
+    fetchRecentOrders()
+  }, [])
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    switch (status.toUpperCase()) {
       case "PENDING":
         return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
       case "CONFIRMED":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+      case "UPLOADED":
+        return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
+      case "IN_TRANSIT":
+        return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300"
       case "DELIVERED":
         return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-      case "ATTEMPT":
-        return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
+      case "RETURNED":
+        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+      case "REJECTED":
+        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+      case "ARCHIVED":
+        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
       default:
         return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
     }
   }
 
   const getStatusText = (status: string) => {
-    switch (status) {
-      case "PENDING":
-        return t("pending")
-      case "CONFIRMED":
-        return t("confirmed")
-      case "DELIVERED":
-        return t("delivered")
-      case "ATTEMPT":
-        return t("attempt")
-      default:
-        return status
+    switch (status.toUpperCase()) {
+      case "PENDING": return t("pending") || "Pending"
+      case "CONFIRMED": return t("confirmed") || "Confirmed"
+      case "UPLOADED": return t("uploaded") || "Uploaded"
+      case "IN_TRANSIT": return t("inTransit") || "In Transit"
+      case "DELIVERED": return t("delivered") || "Delivered"
+      case "RETURNED": return t("returned") || "Returned"
+      case "REJECTED": return t("rejected") || "Rejected"
+      case "ARCHIVED": return t("archived") || "Archived"
+      default: return status
     }
   }
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t("dashboard") || "Dashboard"}</h1>
+          <p className="text-gray-600 dark:text-gray-400">{t("loading") || "Loading..."}...</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
+                </CardTitle>
+                <div className="h-4 w-4 bg-muted animate-pulse rounded"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-8 w-16 bg-muted animate-pulse rounded"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t("dashboard") || "Dashboard"}</h1>
+            <p className="text-gray-600 dark:text-gray-400">{t("welcomeBack") || "Welcome back"}!</p>
+          </div>
+          <Button onClick={fetchStats} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            {t("retry") || "Retry"}
+          </Button>
+        </div>
+        <Card className="border-red-200">
+          <CardContent className="flex items-center space-x-2 pt-6">
+            <AlertCircle className="h-5 w-5 text-red-500" />
+            <span className="text-red-700">{error}</span>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const isAdmin = user?.role === 'ADMIN'
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t("dashboard")}</h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          {t("welcomeBack")} {t("hereWhatHappeningWithOrders")}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t("dashboard") || "Dashboard"}</h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            {t("welcomeBack") || "Welcome back"}, {user?.username}! {t("hereWhatHappeningWithOrders") || "Here's what's happening with your orders today."}
+          </p>
+        </div>
+        <Button onClick={fetchStats} variant="outline" size="sm">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          {t("refresh") || "Refresh"}
+        </Button>
       </div>
 
-      {/* Stats Grid */}
+      {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => (
-          <Card key={index}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-              <stat.icon className={`h-4 w-4 ${stat.color}`} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-              <p className="text-xs text-muted-foreground">{stat.description}</p>
-            </CardContent>
-          </Card>
-        ))}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">{t("totalOrders") || "Total Orders"}</CardTitle>
+            <Package className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.orders.total || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.orders.completionRate || 0}% {t("completionRate") || "completion rate"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">{t("pendingOrders") || "Pending Orders"}</CardTitle>
+            <Clock className="h-4 w-4 text-yellow-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.orders.pending || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {t("awaitingConfirmation") || "Awaiting confirmation"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">{t("deliveredOrders") || "Delivered Orders"}</CardTitle>
+            <CheckCircle className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.orders.delivered || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.orders.deliveryRate || 0}% {t("deliveryRate") || "delivery rate"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">{t("revenue") || "Revenue"}</CardTitle>
+            <TrendingUp className="h-4 w-4 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.revenue.total.toFixed(2) || 0} TND</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.revenue.monthly.toFixed(2) || 0} TND {t("thisMonth") || "this month"}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
+      {/* Additional Stats for Admins */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {stats?.users && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t("teamMembers") || "Team Members"}</CardTitle>
+                <Users className="h-4 w-4 text-green-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.users.total}</div>
+                <p className="text-xs text-muted-foreground">
+                  {stats.users.active} {t("active") || "active"} • {stats.users.admins} {t("admins") || "admins"}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {stats?.products && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t("products") || "Products"}</CardTitle>
+                <ShoppingCart className="h-4 w-4 text-orange-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.products.total}</div>
+                <p className="text-xs text-muted-foreground">
+                  {stats.products.active} {t("active") || "active"} • {stats.products.inactive} {t("inactive") || "inactive"}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {stats?.delivery && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t("deliveryAgencies") || "Delivery Agencies"}</CardTitle>
+                <Truck className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.delivery.totalAgencies}</div>
+                <p className="text-xs text-muted-foreground">
+                  {stats.delivery.enabledAgencies} {t("enabled") || "enabled"} • {stats.delivery.activeShipments} {t("activeShipments") || "active shipments"}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+            {/* Order Status Overview */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("orderStatusOverview") || "Order Status Overview"}</CardTitle>
+          <CardDescription>{t("currentOrderDistribution") || "Current order distribution across all statuses"}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-4 border rounded-lg">
+              <div className="text-2xl font-bold text-yellow-600">{stats?.orders.pending || 0}</div>
+              <p className="text-sm text-muted-foreground">{t("pending") || "Pending"}</p>
+            </div>
+            <div className="text-center p-4 border rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">{stats?.orders.confirmed || 0}</div>
+              <p className="text-sm text-muted-foreground">{t("confirmed") || "Confirmed"}</p>
+            </div>
+            <div className="text-center p-4 border rounded-lg">
+              <div className="text-2xl font-bold text-indigo-600">{stats?.orders.inTransit || 0}</div>
+              <p className="text-sm text-muted-foreground">{t("inTransit") || "In Transit"}</p>
+            </div>
+            <div className="text-center p-4 border rounded-lg">
+              <div className="text-2xl font-bold text-green-600">{stats?.orders.delivered || 0}</div>
+              <p className="text-sm text-muted-foreground">{t("delivered") || "Delivered"}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Recent Orders and Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Orders */}
         <Card>
           <CardHeader>
-            <CardTitle>{t("recentOrders")}</CardTitle>
-            <CardDescription>{t("latestOrdersFromStore")}</CardDescription>
+            <CardTitle>{t("recentOrders") || "Recent Orders"}</CardTitle>
+            <CardDescription>{t("latestOrdersFromStore") || "Latest orders from your store"}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {recentOrders.map((order) => (
-                <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div>
-                      <p className="font-medium">{order.id}</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">{order.customer}</p>
+              {recentOrders.length > 0 ? (
+                recentOrders.map((order) => (
+                  <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <div>
+                        <p className="font-medium">{order.id.substring(0, 8)}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{order.customerName}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      <Badge className={getStatusColor(order.status)}>{getStatusText(order.status)}</Badge>
+                      <p className="font-medium">{Number(order.total).toFixed(2)} TND</p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-4">
-                    <Badge className={getStatusColor(order.status)}>{getStatusText(order.status)}</Badge>
-                    <p className="font-medium">{order.total}</p>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>{t("noRecentOrders") || "No recent orders found"}</p>
                 </div>
-              ))}
+              )}
             </div>
           </CardContent>
         </Card>
 
         {/* Activity Feed */}
-        <ActivityFeed limit={8} title={t("systemActivity")} />
+        <ActivityFeed limit={8} title={t("systemActivity") || "System Activity"} />
       </div>
     </div>
   )

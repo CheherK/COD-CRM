@@ -18,17 +18,16 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const timeRange = searchParams.get("timeRange") || "2weeks" // 2weeks, 1month, all
+    const timeRange = searchParams.get("timeRange") || "2weeks"
     const status = searchParams.get("status")
     const search = searchParams.get("search")
     const page = Number.parseInt(searchParams.get("page") || "1")
-    const limit = Number.parseInt(searchParams.get("limit") || "20")
-
+    const limit = Math.min(Number.parseInt(searchParams.get("limit") || "20"), 100) // Cap at 100
     const product = searchParams.get("product")
     const city = searchParams.get("city")
     const deliveryAgency = searchParams.get("deliveryAgency")
 
-    // Build date filter based on time range
+    // Build date filter with better performance
     let dateFilter: any = {}
     const now = new Date()
 
@@ -39,150 +38,198 @@ export async function GET(request: NextRequest) {
       case "1month":
         dateFilter = { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) }
         break
+      case "3months":
+        dateFilter = { gte: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000) }
+        break
       case "all":
         break
     }
 
-    // Build where clause
+    // Build optimized where clause
     let whereClause: any = {}
 
     if (Object.keys(dateFilter).length > 0) {
       whereClause.createdAt = dateFilter
     }
 
-    // Status filter
+    // Status filter - use index
     if (status && status !== "all") {
       whereClause.status = status
     }
 
-    // Search filter
+    // Optimized search with specific field targeting
     if (search) {
-      whereClause.OR = [
-        { customerPhone1: { contains: search, mode: "insensitive" } },
-        { customerPhone2: { contains: search, mode: "insensitive" } },
-        { customerName: { contains: search, mode: "insensitive" } },
-        { id: { contains: search, mode: "insensitive" } },
-        {
-          items: {
-            some: {
-              product: {
-                OR: [
-                  { name: { contains: search, mode: "insensitive" } },
-                  { nameEn: { contains: search, mode: "insensitive" } },
-                  { nameFr: { contains: search, mode: "insensitive" } },
-                ],
+      const searchTerm = search.trim()
+      // Check if it looks like a phone number
+      const phoneRegex = /^\+?[\d\s\-\(\)]+$/
+      
+      if (phoneRegex.test(searchTerm)) {
+        // Phone-optimized search
+        whereClause.OR = [
+          { customerPhone1: { contains: searchTerm.replace(/\D/g, ''), mode: "insensitive" } },
+          { customerPhone2: { contains: searchTerm.replace(/\D/g, ''), mode: "insensitive" } }
+        ]
+      } else {
+        // General search
+        whereClause.OR = [
+          { customerName: { contains: searchTerm, mode: "insensitive" } },
+          { customerPhone1: { contains: searchTerm, mode: "insensitive" } },
+          { id: { contains: searchTerm, mode: "insensitive" } },
+          // Product search - more efficient with nested query
+          {
+            items: {
+              some: {
+                product: {
+                  OR: [
+                    { name: { contains: searchTerm, mode: "insensitive" } },
+                    { nameEn: { contains: searchTerm, mode: "insensitive" } },
+                    { nameFr: { contains: searchTerm, mode: "insensitive" } },
+                  ],
+                },
               },
             },
           },
-        },
-      ]
+        ]
+      }
     }
 
-    // Advanced filters
+    // Advanced filters with better performance
     if (product && product !== "__all__") {
       whereClause.items = {
         some: {
-          product: {
-            name: { contains: product, mode: "insensitive" },
-          },
-        },
+          productId: product === "__search__" ? undefined : product
+        }
       }
     }
 
     if (city && city !== "__all__") {
-      whereClause.customerCity = { contains: city, mode: "insensitive" }
+      whereClause.customerCity = { equals: city } // Use equals for better index usage
     }
 
     if (deliveryAgency && deliveryAgency !== "__all__") {
       whereClause.shipments = {
         some: {
-          agency: {
-            name: { contains: deliveryAgency, mode: "insensitive" },
-          },
-        },
+          agencyId: deliveryAgency === "__search__" ? undefined : deliveryAgency
+        }
       }
     }
 
-    // Count for pagination
-    const totalCount = await prisma.order.count({ where: whereClause })
+    // Use transaction for consistency and performance
+    const [totalCount, orders] = await prisma.$transaction([
+      // Count query - optimized
+      prisma.order.count({ where: whereClause }),
+      
+      // Main query - optimized with selective includes
+      prisma.order.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          customerName: true,
+          customerPhone1: true,
+          customerPhone2: true,
+          customerEmail: true,
+          customerAddress: true,
+          customerCity: true,
+          status: true,
+          deliveryCompany: true,
+          total: true,
+          deliveryPrice: true,
+          notes: true,
+          attemptCount: true,
+          createdAt: true,
+          updatedAt: true,
+          confirmedById: true,
+          // Optimized includes
+          confirmedBy: {
+            select: {
+              id: true,
+              username: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          items: {
+            select: {
+              id: true,
+              quantity: true,
+              price: true,
+              productId: true,
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  nameEn: true,
+                  nameFr: true,
+                  imageUrl: true,
+                },
+              },
+            },
+          },
+          shipments: {
+            select: {
+              id: true,
+              trackingNumber: true,
+              status: true,
+              createdAt: true,
+              agency: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [
+          { createdAt: "desc" },
+          { id: "desc" }
+        ],
+        skip: (page - 1) * limit,
+        take: limit,
+      })
+    ])
 
-    // Fetch orders
-    const orders = await prisma.order.findMany({
-      where: whereClause,
-      include: {
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                nameEn: true,
-                nameFr: true,
-                imageUrl: true,
-              },
-            },
-          },
-        },
-        confirmedBy: {
-          select: {
-            id: true,
-            username: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        shipments: {
-          include: {
-            agency: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      skip: (page - 1) * limit,
-      take: limit,
+    // Optimize response formatting
+    const formattedOrders = orders.map((order) => {
+      const totalItems = order.items.reduce((sum, item) => sum + item.quantity, 0)
+      const firstProduct = order.items[0]?.product || null
+      
+      return {
+        id: order.id,
+        customerName: order.customerName,
+        customerPhone1: order.customerPhone1,
+        customerPhone2: order.customerPhone2,
+        customerEmail: order.customerEmail,
+        customerAddress: order.customerAddress,
+        customerCity: order.customerCity,
+        status: order.status,
+        deliveryCompany: order.deliveryCompany,
+        total: Number(order.total),
+        deliveryPrice: order.deliveryPrice ? Number(order.deliveryPrice) : null,
+        notes: order.notes,
+        attemptCount: order.attemptCount,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        confirmedBy: order.confirmedBy,
+        items: order.items.map((item) => ({
+          id: item.id,
+          quantity: item.quantity,
+          price: Number(item.price),
+          product: item.product,
+          productId: item.productId,
+        })),
+        shipments: order.shipments,
+        // Computed fields
+        totalItems,
+        firstProduct,
+        hasMultipleProducts: order.items.length > 1,
+      }
     })
-
-    const formattedOrders = orders.map((order) => ({
-      id: order.id,
-      customerName: order.customerName,
-      customerPhone1: order.customerPhone1,
-      customerPhone2: order.customerPhone2,
-      customerEmail: order.customerEmail,
-      customerAddress: order.customerAddress,
-      customerCity: order.customerCity,
-      status: order.status,
-      deliveryCompany: order.deliveryCompany,
-      total: Number(order.total),
-      deliveryPrice: order.deliveryPrice ? Number(order.deliveryPrice) : null,
-      notes: order.notes,
-      attemptCount: order.attemptCount,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-      confirmedBy: order.confirmedBy,
-      items: order.items.map((item) => ({
-        id: item.id,
-        quantity: item.quantity,
-        price: Number(item.price),
-        product: item.product,
-        productId: item.productId,
-      })),
-      shipments: order.shipments.map((shipment) => ({
-        id: shipment.id,
-        trackingNumber: shipment.trackingNumber,
-        status: shipment.status,
-        agency: shipment.agency,
-        createdAt: shipment.createdAt,
-      })),
-    }))
 
     console.log(`✅ Retrieved ${formattedOrders.length} orders for ${timeRange}`)
 
-    return NextResponse.json({
+    // Add cache headers for better performance
+    const response = NextResponse.json({
       orders: formattedOrders,
       pagination: {
         page,
@@ -196,6 +243,12 @@ export async function GET(request: NextRequest) {
         cacheTimestamp: new Date().toISOString(),
       },
     })
+
+    // Cache for 30 seconds for recent orders
+    // response.headers.set('Cache-Control', 's-maxage=30, stale-while-revalidate=60')
+    
+    return response
+
   } catch (error) {
     console.error("❌ Get recent orders API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

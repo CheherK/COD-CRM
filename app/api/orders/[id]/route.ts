@@ -7,22 +7,48 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     console.log("=== GET FULL ORDER DETAILS API CALLED ===")
 
     const token = request.cookies.get("auth-token")?.value
-
     if (!token) {
       return NextResponse.json({ error: "No token provided" }, { status: 401 })
     }
 
     const user = verifyToken(token)
-
     if (!user) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
     const order = await prisma.order.findUnique({
       where: { id: params.id },
-      include: {
+      select: {
+        id: true,
+        customerName: true,
+        customerPhone1: true,
+        customerPhone2: true,
+        customerEmail: true,
+        customerAddress: true,
+        customerCity: true,
+        status: true,
+        deliveryCompany: true,
+        total: true,
+        deliveryPrice: true,
+        notes: true,
+        attemptCount: true,
+        createdAt: true,
+        updatedAt: true,
+        confirmedBy: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
         items: {
-          include: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
+            productId: true,
             product: {
               select: {
                 id: true,
@@ -30,118 +56,99 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
                 nameEn: true,
                 nameFr: true,
                 price: true,
-                imageUrl: true
-              }
-            }
-          }
-        },
-        confirmedBy: {
-          select: {
-            id: true,
-            username: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
+                imageUrl: true,
+              },
+            },
+          },
         },
         statusHistory: {
           orderBy: {
-            createdAt: 'asc' // Order chronologically for history view
+            createdAt: 'asc',
           },
-          include: {
+          select: {
+            id: true,
+            status: true,
+            notes: true,
+            createdAt: true,
             user: {
               select: {
                 id: true,
                 username: true,
                 firstName: true,
-                lastName: true
-              }
-            }
-          }
+                lastName: true,
+              },
+            },
+          },
         },
         shipments: {
-          include: {
+          select: {
+            id: true,
+            trackingNumber: true,
+            barcode: true,
+            status: true,
+            lastStatusUpdate: true,
+            printUrl: true,
+            createdAt: true,
+            updatedAt: true,
             agency: {
               select: {
                 id: true,
-                name: true
-              }
+                name: true,
+              },
             },
             statusLogs: {
               orderBy: {
-                timestamp: 'desc'
+                timestamp: 'desc',
               },
-              take: 10
-            }
-          }
-        }
-      }
+              take: 10,
+              select: {
+                id: true,
+                status: true,
+                statusCode: true,
+                message: true,
+                timestamp: true,
+                source: true,
+              },
+            },
+          },
+        },
+      },
     })
 
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    // Format the order response with complete history
+    // Efficient response formatting
+    const subtotal = order.items.reduce((sum, item) => sum + (Number(item.price) * item.quantity), 0)
+    const totalItems = order.items.reduce((sum, item) => sum + item.quantity, 0)
+
     const formattedOrder = {
-      id: order.id,
-      customerName: order.customerName,
-      customerPhone1: order.customerPhone1,
-      customerPhone2: order.customerPhone2,
-      customerEmail: order.customerEmail,
-      customerAddress: order.customerAddress,
-      customerCity: order.customerCity,
-      status: order.status,
-      deliveryCompany: order.deliveryCompany,
+      ...order,
       total: Number(order.total),
       deliveryPrice: order.deliveryPrice ? Number(order.deliveryPrice) : null,
-      notes: order.notes,
-      attemptCount: order.attemptCount,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-      confirmedBy: order.confirmedBy,
       items: order.items.map(item => ({
-        id: item.id,
-        quantity: item.quantity,
+        ...item,
         price: Number(item.price),
         total: Number(item.price) * item.quantity,
-        product: item.product,
-        productId: item.productId
       })),
-      // Enhanced status history with proper chronological order
-      statusHistory: order.statusHistory.map(history => ({
-        id: history.id,
-        status: history.status,
-        notes: history.notes,
-        createdAt: history.createdAt,
-        user: history.user
-      })),
-      // Shipment information
-      shipments: order.shipments.map(shipment => ({
-        id: shipment.id,
-        trackingNumber: shipment.trackingNumber,
-        barcode: shipment.barcode,
-        status: shipment.status,
-        lastStatusUpdate: shipment.lastStatusUpdate,
-        printUrl: shipment.printUrl,
-        agency: shipment.agency,
-        statusLogs: shipment.statusLogs,
-        createdAt: shipment.createdAt,
-        updatedAt: shipment.updatedAt
-      })),
-      // Add computed fields for display
-      subtotal: order.items.reduce((sum, item) => sum + (Number(item.price) * item.quantity), 0),
-      totalItems: order.items.reduce((sum, item) => sum + item.quantity, 0),
+      // Computed fields
+      subtotal,
+      totalItems,
       firstProduct: order.items[0]?.product || null,
-      hasMultipleProducts: order.items.length > 1
+      hasMultipleProducts: order.items.length > 1,
     }
 
-    console.log(`✅ Full order details retrieved for order: ${order.id}`)
-
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       order: formattedOrder,
       success: true 
     })
+
+    // Cache individual orders for longer
+    // response.headers.set('Cache-Control', 's-maxage=300, stale-while-revalidate=600')
+    
+    return response
+
   } catch (error) {
     console.error("❌ Get full order details API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

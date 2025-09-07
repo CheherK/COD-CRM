@@ -480,7 +480,7 @@ export default function DeliveryAnalyticsPage() {
                         {delivery.status.toLowerCase().replace('_', ' ')}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {delivery.total.toFixed(2)} TND
+                        {delivery?.total} TND
                       </span>
                     </div>
                   </div>

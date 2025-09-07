@@ -1,5 +1,5 @@
 export const translations = {
-  en: {
+en: {
     // Navigation
     dashboard: "Dashboard",
     orders: "Orders",
@@ -24,6 +24,30 @@ export const translations = {
     hereWhatHappeningWithOrders: "Here's what's happening with your orders",
     recentOrders: "Recent Orders",
     latestOrdersFromStore: "Latest orders from your store",
+    deliveredOrders: "Delivered Orders",
+    ordersHandledByTeam: "Orders handled by team",
+    successfullyDelivered: "Successfully delivered",
+    avgCompletion: "avg completion",
+    topPerformer: "Top Performer",
+    completedOrders: "completed orders",
+    teamMembersPerformance: "Team Members Performance",
+    individualTeamMemberStatistics: "Individual team member statistics",
+    completion: "completion",
+    activitiesInLast30Days: "activities in the last 30 days",
+    recentTeamActivities: "Recent Team Activities",
+    latestActionsPerformedByTeamMembers: "Latest actions performed by team members",
+    activityTypes: "Activity Types",
+    distributionOfTeamActivities: "Distribution of team activities",
+    activityTrend: "Activity Trend",
+    dailyTeamActivityOverLast14Days: "Daily team activity over the last 14 days",
+    dailyActivities: "Daily Activities",
+    allTeamMembers: "All Team Members",
+    selectDateRange: "Select date range",
+    monitorTeamPerformanceAndActivity: "Monitor team performance and activity",
+    youNeedAdminPrivilegesToViewTeamAnalytics: "You need admin privileges to view team analytics",
+    noRecentOrders: "No recent orders found",
+    orderStatusOverview: "Order Status Overview",
+    currentOrderDistribution: "Current order distribution across all statuses",
 
     // Common actions
     search: "Search",
@@ -44,6 +68,8 @@ export const translations = {
     enable: "Enable",
     disable: "Disable",
     retry: "Retry",
+    clear: "Clear",
+    add: "Add",
 
     // Status
     success: "Success",
@@ -60,6 +86,11 @@ export const translations = {
     completed: "Completed",
     failed: "Failed",
     cancelled: "Cancelled",
+    uploaded: "Uploaded",
+    deposit: "Deposit",
+    inTransit: "In Transit",
+    abandoned: "Abandoned",
+    archived: "Archived",
 
     // User management
     username: "Username",
@@ -89,7 +120,7 @@ export const translations = {
     usernameAtLeast3Characters: "Username must be at least 3 characters",
     usernameLessThan50Characters: "Username must be less than 50 characters",
     usernameOnlyLettersNumbersHyphensUnderscores:
-      "Username can only contain letters, numbers, hyphens, and underscores",
+    "Username can only contain letters, numbers, hyphens, and underscores",
     emailRequired: "Email is required",
     enterValidEmailAddress: "Please enter a valid email address",
     passwordRequired: "Password is required",
@@ -151,6 +182,7 @@ export const translations = {
     currentPasswordIncorrect: "Current password is incorrect",
     activity: "Activity",
     yourActivityHistory: "Your Activity History",
+    myActivity: "My Activity",
 
     // Activity logging
     recentActivity: "Recent Activity",
@@ -172,6 +204,15 @@ export const translations = {
     profileUpdated: "Profile Updated",
     passwordChanged: "Password Changed",
     settingsUpdated: "Settings Updated",
+    authenticationActivities: "Authentication Activities",
+    orderActivities: "Order Activities",
+    userActivities: "User Management Activities",
+    systemActivities: "System Activities",
+    activityByType: "Activity by Type",
+    allActivities: "All Activities",
+    authentication: "Authentication",
+    system: "System",
+    undefined: "Undefined",
 
     // Delivery management
     manageDeliveryAgenciesShipments: "Manage delivery agencies and shipments",
@@ -201,6 +242,7 @@ export const translations = {
     updateAgencyCredentialsSettings: "Update agency credentials and settings",
     agencyName: "Agency Name",
     apiKey: "API Key",
+    apiKeys: "API Keys",
     enableAutoSync: "Enable Auto Sync",
     saveChanges: "Save Changes",
     agencyUpdatedSuccessfully: "Agency updated successfully",
@@ -221,6 +263,7 @@ export const translations = {
     enabledAgencies: "Enabled Agencies",
     outOf: "out of",
     total: "total",
+    allAgencies: "All Agencies",
 
     // Delivery statuses
     "deliveryStatus.pending": "Pending",
@@ -265,7 +308,6 @@ export const translations = {
     selectUser: "Select User",
     allUsers: "All Users",
     dateRange: "Date Range",
-    selectDateRange: "Select Date Range",
     allTime: "All Time",
     today: "Today",
     thisWeek: "This Week",
@@ -385,6 +427,28 @@ export const translations = {
     attempted: "Attempted",
     attempts: "attempts",
     noOrdersFound: "No orders found",
+    ordersExportedSuccessfully: "Orders exported successfully",
+    ordersStatusUpdatedSuccessfully: "Orders status updated successfully",
+    ordersDeletedSuccessfully: "Orders deleted successfully",
+    failedToPerformBulkAction: "Failed to perform bulk action",
+    failedToLoadOrders: "Failed to load orders",
+    failedToLoadOrderDetails: "Failed to load order details",
+    id: "ID",
+    date: "Date",
+    customer: "Customer",
+    delivery: "Delivery",
+    previous: "Previous",
+    next: "Next",
+    page: "Page",
+    of: "of",
+    showing: "Showing",
+    no: "No",
+    ordersFound: "orders found",
+    thisActionCannotBeUndone: "This action cannot be undone",
+    areYouSure: "Are you sure?",
+    completionRate: "completion rate",
+    deliveryRate: "delivery rate",
+    systemActivity: "System Activity",
 
     // Order Sidebar additions
     saving: "Saving...",
@@ -412,12 +476,12 @@ export const translations = {
     delivered: "Delivered",
     rejected: "Rejected",
     returned: "Returned",
-    uploaded: "Uploaded",
-    deposit: "Deposit",
-    inTransit: "In Transit",
-    abandoned: "Abandoned",
-    archived: "Archived",
     attemptNumber: "Attempt Number",
+    orderAlreadyUploaded: "Order already uploaded",
+    selectProduct: "Select Product",
+    unitPrice: "Unit Price",
+    attributes: "Attributes",
+    markAsReturned: "Mark as Returned",
 
     // Additional UI
     collapse: "Collapse",
@@ -479,8 +543,54 @@ export const translations = {
     deleteShipment: "Delete Shipment",
     shipmentDeleted: "Shipment deleted successfully",
     failedToDeleteShipment: "Failed to delete shipment",
-  },
-  fr: {
+
+    // Product management
+    manageProductCatalog: "Manage your product catalog",
+    syncFromShopify: "Sync from Shopify",
+    syncStarted: "Sync Started",
+    syncingProductsFromShopify: "Syncing products from Shopify...",
+    syncedProducts: "Synced products",
+    withErrors: "with errors",
+    failedToSyncProductsFromShopify: "Failed to sync products from Shopify",
+    searchProducts: "Search products...",
+    allProducts: "All Products",
+    activeProducts: "Active Products",
+    inactiveProducts: "Inactive Products",
+    shopifyId: "Shopify ID",
+    originalPrice: "Original Price",
+    orderCount: "Order Count",
+    lastUpdated: "Last Updated",
+    syncFromShopifyDescription: "This will fetch all products from your Shopify store and update your local database. This process may take a few minutes depending on the number of products.",
+    startSync: "Start Sync",
+    syncedFromShopify: "Synced from Shopify",
+
+    // Delivery analytics
+    deliveryAnalytics: "Delivery Analytics",
+    monitorDeliveryPerformanceAndShipmentStatistics: "Monitor delivery performance and shipment statistics",
+    allDeliveryAgencies: "All Delivery Agencies",
+    currentlyActive: "currently active",
+    currentlyShipping: "Currently shipping",
+    returnRate: "Return Rate",
+    averageDeliveryTime: "Average Delivery Time",
+    days: "days",
+    deliveryPerformance: "Delivery Performance",
+    successRate: "Success Rate",
+    shippingRate: "Shipping Rate",
+    shippingEfficiency: "Shipping Efficiency",
+    orderStatusDistribution: "Order Status Distribution",
+    currentOrderStatuses: "Current order statuses",
+    deliveryAgencies: "Delivery Agencies",
+    shipmentsByAgency: "Shipments by agency",
+    noOrderDataAvailable: "No order data available",
+    noAgencyDataAvailable: "No agency data available",
+    monthlyDeliveryTrend: "Monthly Delivery Trend",
+    deliveriesOverLast6Months: "Deliveries over the last 6 months",
+    noTrendDataAvailable: "No trend data available",
+    recentDeliveries: "Recent Deliveries",
+    latestDeliveryActivities: "Latest delivery activities",
+    noRecentDeliveriesFound: "No recent deliveries found",
+},
+fr: {
     // Navigation
     dashboard: "Tableau de bord",
     orders: "Commandes",
@@ -505,6 +615,30 @@ export const translations = {
     hereWhatHappeningWithOrders: "Voici ce qui se passe avec vos commandes",
     recentOrders: "Commandes récentes",
     latestOrdersFromStore: "Dernières commandes de votre boutique",
+    deliveredOrders: "Commandes Livrées",
+    ordersHandledByTeam: "Commandes traitées par l'équipe",
+    successfullyDelivered: "Livrées avec succès",
+    avgCompletion: "completion moyenne",
+    topPerformer: "Meilleur Performeur",
+    completedOrders: "commandes terminées",
+    teamMembersPerformance: "Performance des Membres de l'Équipe",
+    individualTeamMemberStatistics: "Statistiques individuelles des membres de l'équipe",
+    completion: "completion",
+    activitiesInLast30Days: "activités dans les 30 derniers jours",
+    recentTeamActivities: "Activités Récentes de l'Équipe",
+    latestActionsPerformedByTeamMembers: "Dernières actions effectuées par les membres de l'équipe",
+    activityTypes: "Types d'Activité",
+    distributionOfTeamActivities: "Distribution des activités de l'équipe",
+    activityTrend: "Tendance d'Activité",
+    dailyTeamActivityOverLast14Days: "Activité quotidienne de l'équipe au cours des 14 derniers jours",
+    dailyActivities: "Activités Quotidiennes",
+    allTeamMembers: "Tous les Membres de l'Équipe",
+    selectDateRange: "Sélectionner une plage de dates",
+    monitorTeamPerformanceAndActivity: "Surveiller les performances et l'activité de l'équipe",
+    youNeedAdminPrivilegesToViewTeamAnalytics: "Vous avez besoin de privilèges d'administrateur pour voir les analyses d'équipe",
+    noRecentOrders: "Aucune commande récente trouvée",
+    orderStatusOverview: "Aperçu du Statut des Commandes",
+    currentOrderDistribution: "Distribution actuelle des commandes selon tous les statuts",
 
     // Common actions
     search: "Rechercher",
@@ -525,6 +659,8 @@ export const translations = {
     enable: "Activer",
     disable: "Désactiver",
     retry: "Réessayer",
+    clear: "Effacer",
+    add: "Ajouter",
 
     // Status
     success: "Succès",
@@ -541,6 +677,12 @@ export const translations = {
     completed: "Terminé",
     failed: "Échoué",
     cancelled: "Annulé",
+    attempted: "Tentée",
+    uploaded: "Téléchargé",
+    deposit: "Dépôt",
+    inTransit: "En Transit",
+    abandoned: "Abandonné",
+    archived: "Archivé",
 
     // User management
     username: "Nom d'utilisateur",
@@ -570,7 +712,7 @@ export const translations = {
     usernameAtLeast3Characters: "Le nom d'utilisateur doit contenir au moins 3 caractères",
     usernameLessThan50Characters: "Le nom d'utilisateur doit contenir moins de 50 caractères",
     usernameOnlyLettersNumbersHyphensUnderscores:
-      "Le nom d'utilisateur ne peut contenir que des lettres, chiffres, tirets et underscores",
+    "Le nom d'utilisateur ne peut contenir que des lettres, chiffres, tirets et underscores",
     emailRequired: "L'email est requis",
     enterValidEmailAddress: "Veuillez entrer une adresse email valide",
     passwordRequired: "Le mot de passe est requis",
@@ -632,6 +774,7 @@ export const translations = {
     currentPasswordIncorrect: "Le mot de passe actuel est incorrect",
     activity: "Activité",
     yourActivityHistory: "Votre historique d'activité",
+    myActivity: "Mon Activité",
 
     // Activity logging
     recentActivity: "Activité récente",
@@ -653,6 +796,15 @@ export const translations = {
     profileUpdated: "Profil mis à jour",
     passwordChanged: "Mot de passe changé",
     settingsUpdated: "Paramètres mis à jour",
+    authenticationActivities: "Activités d'Authentification",
+    orderActivities: "Activités de Commandes",
+    userActivities: "Activités de Gestion des Utilisateurs",
+    systemActivities: "Activités du Système",
+    activityByType: "Activité par Type",
+    allActivities: "Toutes les Activités",
+    authentication: "Authentification",
+    system: "Système",
+    undefined: "Indéfini",
 
     // Delivery management
     manageDeliveryAgenciesShipments: "Gérer les agences de livraison et les expéditions",
@@ -682,6 +834,7 @@ export const translations = {
     updateAgencyCredentialsSettings: "Mettre à jour les identifiants et paramètres de l'agence",
     agencyName: "Nom de l'agence",
     apiKey: "Clé API",
+    apiKeys: "Clés API",
     enableAutoSync: "Activer la synchronisation automatique",
     saveChanges: "Enregistrer les modifications",
     agencyUpdatedSuccessfully: "Agence mise à jour avec succès",
@@ -702,6 +855,7 @@ export const translations = {
     enabledAgencies: "Agences activées",
     outOf: "sur",
     total: "total",
+    allAgencies: "Toutes les Agences",
 
     // Delivery statuses
     "deliveryStatus.pending": "En attente",
@@ -746,7 +900,6 @@ export const translations = {
     selectUser: "Sélectionner l'utilisateur",
     allUsers: "Tous les utilisateurs",
     dateRange: "Plage de dates",
-    selectDateRange: "Sélectionner la plage de dates",
     allTime: "Tout le temps",
     today: "Aujourd'hui",
     thisWeek: "Cette semaine",
@@ -863,23 +1016,50 @@ export const translations = {
     allOrders: "Toutes les commandes",
     pickDateRange: "Choisissez une plage de dates",
     orderDeletedSuccessfully: "Commande supprimée avec succès",
-    attempted: "Tentée",
     attempts: "tentatives",
+    noOrdersFound: "Aucune commande trouvée",
+    ordersExportedSuccessfully: "Commandes exportées avec succès",
+    ordersStatusUpdatedSuccessfully: "Statut des commandes mis à jour avec succès",
+    ordersDeletedSuccessfully: "Commandes supprimées avec succès",
+    failedToPerformBulkAction: "Échec de l'exécution de l'action en lot",
+    failedToLoadOrders: "Échec du chargement des commandes",
+    failedToLoadOrderDetails: "Échec du chargement des détails de la commande",
+    id: "ID",
+    date: "Date",
+    customer: "Client",
+    delivery: "Livraison",
+    previous: "Précédent",
+    next: "Suivant",
+    page: "Page",
+    of: "de",
+    showing: "Affichage",
+    no: "Aucun",
+    ordersFound: "commandes trouvées",
+    thisActionCannotBeUndone: "Cette action ne peut pas être annulée",
+    areYouSure: "Êtes-vous sûr ?",
+    completionRate: "taux de completion",
+    deliveryRate: "taux de livraison",
+    systemActivity: "Activité du Système",
 
     // Order Sidebar additions
     saving: "Enregistrement...",
     currentStatus: "Statut actuel",
     pendingHelpText: "En attente de confirmation du client avant de traiter la commande.",
     attemptHelpText: "Le client a été contacté mais la livraison n'a pas été effectuée. Vous pouvez réessayer.",
-    confirmedHelpText: "La commande est confirmée et prête à être traitée.",
-    uploadedHelpText: "La commande a été transmise à la société de livraison.",
-    rejectedHelpText: "La commande a été refusée par le client.",
-    returnedHelpText: "Clile client ne termine pas le processus de commande.",
+    confirmedHelpText: "La commande est confirmée et prête à être expédiée.",
+    uploadedHelpText: "La commande a été téléchargée vers la société de livraison.",
+    rejectedHelpText: "La commande a été rejetée par le client.",
+    abandonedHelpText: "Le client ne termine pas le processus de commande.",
     attemptCount: "Nombre de tentatives",
     shipmentCreatedSuccessfully: "Expédition créée avec succès",
     orderCreatedSuccessfully: "Commande créée avec succès",
     orderUpdatedSuccessfully: "Commande mise à jour avec succès",
     callAttempts: "Tentatives d'appel",
+    unsavedChangesDescription: "Vous avez des modifications non enregistrées. Êtes-vous sûr de vouloir fermer ?",
+    unsavedChanges: "Modifications Non Enregistrées",
+    discardChanges: "Ignorer les Modifications",
+    saveAndClose: "Enregistrer et Fermer",
+    close: "Fermer",
 
     // Order Statuses
     confirmed: "Confirmé",
@@ -887,12 +1067,12 @@ export const translations = {
     delivered: "Livré",
     rejected: "Rejeté",
     returned: "Retourné",
-    uploaded: "Téléchargé",
-    deposit: "Dépôt",
-    inTransit: "En Transit",
-    abandoned: "Abandonné",
-    archived: "Archivé",
     attemptNumber: "Numéro de Tentative",
+    orderAlreadyUploaded: "Commande déjà téléchargée",
+    selectProduct: "Sélectionner un Produit",
+    unitPrice: "Prix Unitaire",
+    attributes: "Attributs",
+    markAsReturned: "Marquer comme Retourné",
 
     // Additional UI
     collapse: "Réduire",
@@ -954,23 +1134,69 @@ export const translations = {
     deleteShipment: "Supprimer l'Expédition",
     shipmentDeleted: "Expédition supprimée avec succès",
     failedToDeleteShipment: "Échec de la suppression de l'expédition",
-  },
+
+    // Product management
+    manageProductCatalog: "Gérer votre catalogue de produits",
+    syncFromShopify: "Synchroniser depuis Shopify",
+    syncStarted: "Synchronisation Démarrée",
+    syncingProductsFromShopify: "Synchronisation des produits depuis Shopify...",
+    syncedProducts: "Produits synchronisés",
+    withErrors: "avec des erreurs",
+    failedToSyncProductsFromShopify: "Échec de la synchronisation des produits depuis Shopify",
+    searchProducts: "Rechercher des produits...",
+    allProducts: "Tous les Produits",
+    activeProducts: "Produits Actifs",
+    inactiveProducts: "Produits Inactifs",
+    shopifyId: "ID Shopify",
+    originalPrice: "Prix Original",
+    orderCount: "Nombre de Commandes",
+    lastUpdated: "Dernière Mise à Jour",
+    syncFromShopifyDescription: "Ceci va récupérer tous les produits de votre boutique Shopify et mettre à jour votre base de données locale. Ce processus peut prendre quelques minutes selon le nombre de produits.",
+    startSync: "Démarrer la Synchronisation",
+    syncedFromShopify: "Synchronisé depuis Shopify",
+
+    // Delivery analytics
+    deliveryAnalytics: "Analyses de Livraison",
+    monitorDeliveryPerformanceAndShipmentStatistics: "Surveiller les performances de livraison et les statistiques d'expédition",
+    allDeliveryAgencies: "Toutes les Agences de Livraison",
+    currentlyActive: "actuellement actives",
+    currentlyShipping: "Actuellement en expédition",
+    returnRate: "Taux de Retour",
+    averageDeliveryTime: "Temps de Livraison Moyen",
+    days: "jours",
+    deliveryPerformance: "Performance de Livraison",
+    successRate: "Taux de Réussite",
+    shippingRate: "Taux d'Expédition",
+    shippingEfficiency: "Efficacité d'Expédition",
+    orderStatusDistribution: "Distribution du Statut des Commandes",
+    currentOrderStatuses: "Statuts actuels des commandes",
+    deliveryAgencies: "Agences de Livraison",
+    shipmentsByAgency: "Expéditions par agence",
+    noOrderDataAvailable: "Aucune donnée de commande disponible",
+    noAgencyDataAvailable: "Aucune donnée d'agence disponible",
+    monthlyDeliveryTrend: "Tendance de Livraison Mensuelle",
+    deliveriesOverLast6Months: "Livraisons au cours des 6 derniers mois",
+    noTrendDataAvailable: "Aucune donnée de tendance disponible",
+    recentDeliveries: "Livraisons Récentes",
+    latestDeliveryActivities: "Dernières activités de livraison",
+    noRecentDeliveriesFound: "Aucune livraison récente trouvée",
+},
 }
 
 export function useTranslation(language: string) {
-  return {
+return {
     t: (key: string): string => {
-      const keys = key.split(".")
-      let value: any = translations[language as keyof typeof translations] || translations.en
+    const keys = key.split(".")
+    let value: any = translations[language as keyof typeof translations] || translations.en
 
-      for (const k of keys) {
+    for (const k of keys) {
         value = value?.[k]
         if (value === undefined) break
-      }
+    }
 
-      return value || key
+    return value || key
     },
-  }
+}
 }
 
 export default translations

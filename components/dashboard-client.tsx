@@ -23,14 +23,17 @@ interface DashboardStats {
   orders: {
     total: number
     pending: number
+    abandoned: number
+    attempted: number
     confirmed: number
-    processing: number
     uploaded: number
+    deleted: number
+    rejected: number
+    archived: number
+    deposit: number
     inTransit: number
-    shipped: number
     delivered: number
     returned: number
-    cancelled: number
     deliveryRate: number
     returnRate: number
     completionRate: number
@@ -83,9 +86,20 @@ export function DashboardClient() {
   const { t } = useLanguage()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [user, setUser] = useState<UserInfo | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([])
+
+  // Load data from localStorage on component mount
+  useEffect(() => {
+    const savedStats = localStorage.getItem('dashboard-stats')
+    const savedUser = localStorage.getItem('dashboard-user')
+    const savedRecentOrders = localStorage.getItem('dashboard-recent-orders')
+    
+    if (savedStats) setStats(JSON.parse(savedStats))
+    if (savedUser) setUser(JSON.parse(savedUser))
+    if (savedRecentOrders) setRecentOrders(JSON.parse(savedRecentOrders))
+  }, [])
 
   const fetchStats = async () => {
     try {
@@ -103,6 +117,10 @@ export function DashboardClient() {
       if (data.success) {
         setStats(data.stats)
         setUser(data.user)
+        
+        // Save to localStorage
+        localStorage.setItem('dashboard-stats', JSON.stringify(data.stats))
+        localStorage.setItem('dashboard-user', JSON.stringify(data.user))
       } else {
         throw new Error(data.error || 'Failed to fetch stats')
       }
@@ -121,6 +139,7 @@ export function DashboardClient() {
         const data = await response.json()
         if (data.success) {
           setRecentOrders(data.orders || [])
+          localStorage.setItem('dashboard-recent-orders', JSON.stringify(data.orders || []))
         }
       }
     } catch (error) {
@@ -128,10 +147,10 @@ export function DashboardClient() {
     }
   }
 
-  useEffect(() => {
+  const handleRefresh = () => {
     fetchStats()
     fetchRecentOrders()
-  }, [])
+  }
 
   const getStatusColor = (status: string) => {
     switch (status.toUpperCase()) {
@@ -204,7 +223,7 @@ export function DashboardClient() {
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t("dashboard") || "Dashboard"}</h1>
             <p className="text-gray-600 dark:text-gray-400">{t("welcomeBack") || "Welcome back"}!</p>
           </div>
-          <Button onClick={fetchStats} variant="outline" size="sm">
+          <Button onClick={handleRefresh} variant="outline" size="sm">
             <RefreshCw className="h-4 w-4 mr-2" />
             {t("retry") || "Retry"}
           </Button>
@@ -230,7 +249,7 @@ export function DashboardClient() {
             {t("welcomeBack") || "Welcome back"}, {user?.username}! {t("hereWhatHappeningWithOrders") || "Here's what's happening with your orders today."}
           </p>
         </div>
-        <Button onClick={fetchStats} variant="outline" size="sm">
+        <Button onClick={handleRefresh} variant="outline" size="sm">
           <RefreshCw className="h-4 w-4 mr-2" />
           {t("refresh") || "Refresh"}
         </Button>
@@ -341,7 +360,7 @@ export function DashboardClient() {
         </div>
       )}
 
-            {/* Order Status Overview */}
+      {/* Order Status Overview */}
       <Card>
         <CardHeader>
           <CardTitle>{t("orderStatusOverview") || "Order Status Overview"}</CardTitle>

@@ -15,6 +15,7 @@ import { useLanguage } from "@/contexts/language-context"
 import { DeliveryAgencies } from "@/components/delivery-agencies";
 import { DeliveryAnalytics } from "@/components/delivery-analytics";
 import { DeliveryShipments } from "@/components/delivery-shipment";
+import { useAuth } from "@/contexts/auth-context";
 
 interface DeliveryAgency {
   id: string
@@ -51,6 +52,7 @@ interface DeliveryShipment {
 function DeliveryManagementContent() {
   const { t } = useLanguage()
   const { toast } = useToast()
+  const { user } = useAuth()
 
   const [agencies, setAgencies] = useState<DeliveryAgency[]>([])
   const [shipments, setShipments] = useState<DeliveryShipment[]>([])
@@ -145,12 +147,12 @@ function DeliveryManagementContent() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t("deliveryManagement")}</h1>
           <p className="text-gray-600 dark:text-gray-400">{t("manageDeliveryAgenciesShipments")}</p>
         </div>
-        <div className="flex gap-2">
+        {/* <div className="flex gap-2">
           <Button onClick={handleManualSync} disabled={syncing} variant="outline">
             <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? "animate-spin" : ""}`} />
             {syncing ? t("syncing") : t("syncNow")}
           </Button>
-        </div>
+        </div> */}
       </div>
 
       <Tabs defaultValue="shipments" className="space-y-6">
@@ -159,27 +161,45 @@ function DeliveryManagementContent() {
             <Truck className="h-4 w-4" />
             {t("shipments")}
           </TabsTrigger>
-          <TabsTrigger value="agencies" className="flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            {t("agencies")}
-          </TabsTrigger>
-          <TabsTrigger value="analytics" className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
-            {t("analytics")}
-          </TabsTrigger>
+          
+          {
+            user && (user?.role === "ADMIN") && (
+              <TabsTrigger value="agencies" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                {t("agencies")}
+              </TabsTrigger>
+            )
+          }
+          
+          {
+            user && (user?.role === "ADMIN") && (
+              <TabsTrigger value="analytics" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                {t("analytics")}
+              </TabsTrigger>
+            )
+          }
         </TabsList>
 
         <TabsContent value="shipments">
           <DeliveryShipments shipments={shipments} agencies={agencies} onDataChange={loadData} />
         </TabsContent>
 
-        <TabsContent value="agencies">
-          <DeliveryAgencies agencies={agencies} onDataChange={loadData} />
-        </TabsContent>
+        {
+          user && (user?.role === "ADMIN") && (
+            <TabsContent value="agencies">
+              <DeliveryAgencies agencies={agencies} onDataChange={loadData} />
+            </TabsContent>
+          )
+        }
 
-        <TabsContent value="analytics">
-          <DeliveryAnalytics shipments={shipments} agencies={agencies} />
-        </TabsContent>
+        {
+          user && (user?.role === "ADMIN") && (
+            <TabsContent value="analytics">
+              <DeliveryAnalytics shipments={shipments} agencies={agencies} />
+            </TabsContent>
+          )
+        }
       </Tabs>
     </div>
   )
@@ -187,7 +207,7 @@ function DeliveryManagementContent() {
 
 export default function DeliveryManagementPage() {
   return (
-    <AuthGuard requireAdmin={true}>
+    <AuthGuard>
       <DeliveryManagementContent />
     </AuthGuard>
   )

@@ -75,13 +75,13 @@ const navigation = [
     name: "deliveryManagement",
     href: "/dashboard/delivery",
     icon: Truck,
-    roles: ["ADMIN"],
+    roles: ["ADMIN", "STAFF"],
   },
   {
     name: "activities",
     href: "/dashboard/activities",
     icon: Activity,
-    roles: ["ADMIN", "STAFF"],
+    roles: [],
   },
   {
     name: "settings",

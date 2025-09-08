@@ -1,11 +1,15 @@
 generator client {
   provider = "prisma-client-js"
   previewFeatures = ["fullTextSearchPostgres"]
+  // Performance optimizations
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
+  engineType = "binary"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  relationMode = "prisma"
 }
 
 model User {

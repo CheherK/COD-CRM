@@ -9,6 +9,7 @@ import type { OrderStatus } from "@/lib/types"
 // Types
 export interface MinimalOrderData {
   id: string
+  shopifyId?: string
   customerName: string
   customerPhone1: string
   customerPhone2?: string

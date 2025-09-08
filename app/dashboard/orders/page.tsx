@@ -723,7 +723,15 @@ export default function OrdersPage() {
                               onCheckedChange={() => handleSelectOrder(order.id)}
                             />
                           </TableCell>
-                          <TableCell className="font-medium">#{order.id.slice(-8)}</TableCell>
+                          <TableCell className="font-medium">
+                            {
+                              order.shopifyId ? (
+                                order.shopifyId
+                              ) : (
+                                `#${order.id.slice(-8)}`
+                              )
+                            }
+                          </TableCell>
                           <TableCell>
                             <ProductHover items={order.items} />
                           </TableCell>

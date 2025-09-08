@@ -14,12 +14,23 @@ import {
   XCircle, 
   Truck,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Calendar,
+  CalendarDays,
+  CalendarRange
 } from "lucide-react"
 import { ActivityFeed } from "@/components/activity-feed"
 import { useLanguage } from "@/contexts/language-context"
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+
+interface ChartDataPoint {
+  date: string
+  day: string
+  orders: number
+  revenue: number
+}
 
 interface DashboardStats {
   orders: {
@@ -42,10 +53,16 @@ interface DashboardStats {
   }
   revenue: {
     total: number
-    monthly: number
-    weekly: number
     daily: number
+    weekly: number
+    monthly: number
   }
+  orderCounts: {
+    daily: number
+    weekly: number
+    monthly: number
+  }
+  chartData: ChartDataPoint[]
   users?: {
     total: number
     active: number
@@ -198,6 +215,19 @@ export function DashboardClient() {
     }
   }
 
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white dark:bg-gray-800 p-4 border rounded-lg shadow-lg">
+          <p className="font-medium">{`Date: ${label}`}</p>
+          <p className="text-blue-600">{`Orders: ${payload[0]?.value || 0}`}</p>
+          <p className="text-green-600">{`Revenue: ${payload[1]?.value?.toFixed(2) || 0} TND`}</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -206,7 +236,7 @@ export function DashboardClient() {
           <p className="text-gray-600 dark:text-gray-400">{t("loading") || "Loading..."}...</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => (
+          {[...Array(6)].map((_, i) => (
             <Card key={i}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
@@ -264,6 +294,48 @@ export function DashboardClient() {
         </Button>
       </div>
 
+      {/* Time-based Revenue Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">{t("ordersToday") || "Orders Today"}</CardTitle>
+            <Calendar className="h-4 w-4 text-emerald-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.revenue.daily.toFixed(2) || 0} TND</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.orderCounts?.daily || 0} {t("orders") || "orders"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">{t("ordersThisWeek") || "Orders This Week"}</CardTitle>
+            <CalendarDays className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.revenue.weekly.toFixed(2) || 0} TND</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.orderCounts?.weekly || 0} {t("orders") || "orders"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">{t("ordersThisMonth") || "Orders This Month"}</CardTitle>
+            <CalendarRange className="h-4 w-4 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.revenue.monthly.toFixed(2) || 0} TND</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.orderCounts?.monthly || 0} {t("orders") || "orders"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
@@ -307,17 +379,82 @@ export function DashboardClient() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{t("revenue") || "Revenue"}</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("totalRevenue") || "Total Revenue"}</CardTitle>
             <TrendingUp className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.revenue.total.toFixed(2) || 0} TND</div>
             <p className="text-xs text-muted-foreground">
-              {stats?.revenue.monthly.toFixed(2) || 0} TND {t("thisMonth") || "this month"}
+              {t("fromDeliveredOrders") || "From delivered orders"}
             </p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Daily Orders Chart - Full Width */}
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-blue-600" />
+            {t("dailyOrdersTrend") || "Daily Orders Trend - Last 2 Weeks"}
+          </CardTitle>
+          <CardDescription>{t("ordersAndRevenueByDay") || "Daily orders count and revenue for the past 14 days"}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={stats?.chartData || []}
+                margin={{
+                  top: 5,
+                  right: 30,
+                  left: 20,
+                  bottom: 5,
+                }}
+              >
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis 
+                  dataKey="day" 
+                  tick={{ fontSize: 12 }}
+                  className="text-muted-foreground"
+                />
+                <YAxis 
+                  yAxisId="orders"
+                  orientation="left"
+                  tick={{ fontSize: 12 }}
+                  className="text-muted-foreground"
+                />
+                <YAxis 
+                  yAxisId="revenue"
+                  orientation="right"
+                  tick={{ fontSize: 12 }}
+                  className="text-muted-foreground"
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Line
+                  yAxisId="orders"
+                  type="monotone"
+                  dataKey="orders"
+                  stroke="#3b82f6"
+                  strokeWidth={3}
+                  dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, stroke: '#3b82f6', strokeWidth: 2, fill: '#ffffff' }}
+                />
+                <Line
+                  yAxisId="revenue"
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={{ fill: '#10b981', strokeWidth: 2, r: 3 }}
+                  activeDot={{ r: 5, stroke: '#10b981', strokeWidth: 2, fill: '#ffffff' }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Additional Stats for Admins */}
       {isAdmin && (

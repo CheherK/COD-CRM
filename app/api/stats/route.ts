@@ -66,51 +66,107 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Get monthly revenue (current month)
-    const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-    const monthlyRevenueResult = await prisma.order.aggregate({
-      _sum: { total: true },
-      where: {
-        ...orderWhereClause,
-        shipments: {
-          some: {
-            status: "DELIVERED",
-            updatedAt: { gte: currentMonthStart }
-          }
-        }
-      },
-    })
-
-    // Get weekly revenue (last 7 days)
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    const weeklyRevenueResult = await prisma.order.aggregate({
-      _sum: { total: true },
-      where: {
-        ...orderWhereClause,
-        shipments: {
-          some: {
-            status: "DELIVERED",
-            updatedAt: { gte: weekAgo }
-          }
-        }
-      },
-    })
-
-    // Get daily revenue (today)
-    const todayStart = new Date()
+    // Get time-based revenue and order counts
+    const now = new Date()
+    
+    // Today
+    const todayStart = new Date(now)
     todayStart.setHours(0, 0, 0, 0)
+    const todayEnd = new Date(now)
+    todayEnd.setHours(23, 59, 59, 999)
+
+    // This week (Monday to Sunday)
+    const weekStart = new Date(now)
+    const dayOfWeek = now.getDay()
+    const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    weekStart.setDate(now.getDate() + daysToMonday)
+    weekStart.setHours(0, 0, 0, 0)
+
+    // This month
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    monthStart.setHours(0, 0, 0, 0)
+
+    // Previous 2 weeks for chart data
+    const twoWeeksAgo = new Date(now)
+    twoWeeksAgo.setDate(now.getDate() - 14)
+    twoWeeksAgo.setHours(0, 0, 0, 0)
+
+    // Daily revenue and order counts for today
     const dailyRevenueResult = await prisma.order.aggregate({
       _sum: { total: true },
+      _count: true,
       where: {
         ...orderWhereClause,
-        shipments: {
-          some: {
-            status: "DELIVERED",
-            updatedAt: { gte: todayStart }
-          }
-        }
+        createdAt: { gte: todayStart, lte: todayEnd }
       },
     })
+
+    // Weekly revenue and order counts
+    const weeklyRevenueResult = await prisma.order.aggregate({
+      _sum: { total: true },
+      _count: true,
+      where: {
+        ...orderWhereClause,
+        createdAt: { gte: weekStart }
+      },
+    })
+
+    // Monthly revenue and order counts
+    const monthlyRevenueResult = await prisma.order.aggregate({
+      _sum: { total: true },
+      _count: true,
+      where: {
+        ...orderWhereClause,
+        createdAt: { gte: monthStart }
+      },
+    })
+
+    // Get daily order data for the past 2 weeks
+    const dailyOrdersData = await prisma.order.groupBy({
+      by: ['createdAt'],
+      _count: {
+        id: true
+      },
+      _sum: {
+        total: true
+      },
+      where: {
+        ...orderWhereClause,
+        createdAt: { gte: twoWeeksAgo }
+      },
+      orderBy: {
+        createdAt: 'asc'
+      }
+    })
+
+    // Process daily data into chart format
+    const chartData = []
+    for (let i = 0; i < 14; i++) {
+      const date = new Date(twoWeeksAgo)
+      date.setDate(twoWeeksAgo.getDate() + i)
+      
+      const dayStart = new Date(date)
+      dayStart.setHours(0, 0, 0, 0)
+      const dayEnd = new Date(date)
+      dayEnd.setHours(23, 59, 59, 999)
+      
+      // Get orders for this specific day
+      const dayOrders = await prisma.order.aggregate({
+        _count: true,
+        _sum: { total: true },
+        where: {
+          ...orderWhereClause,
+          createdAt: { gte: dayStart, lte: dayEnd }
+        }
+      })
+      
+      chartData.push({
+        date: date.toISOString().split('T')[0],
+        day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        orders: dayOrders._count || 0,
+        revenue: Number(dayOrders._sum.total) || 0
+      })
+    }
 
     // Get user statistics (admin only)
     let userStats = null
@@ -218,10 +274,16 @@ export async function GET(request: NextRequest) {
       },
       revenue: {
         total: Number(totalRevenueResult._sum.total) || 0,
-        monthly: Number(monthlyRevenueResult._sum.total) || 0,
-        weekly: Number(weeklyRevenueResult._sum.total) || 0,
         daily: Number(dailyRevenueResult._sum.total) || 0,
+        weekly: Number(weeklyRevenueResult._sum.total) || 0,
+        monthly: Number(monthlyRevenueResult._sum.total) || 0,
       },
+      orderCounts: {
+        daily: dailyRevenueResult._count || 0,
+        weekly: weeklyRevenueResult._count || 0,
+        monthly: monthlyRevenueResult._count || 0,
+      },
+      chartData,
       users: userStats,
       products: productStats,
       delivery: deliveryStats,

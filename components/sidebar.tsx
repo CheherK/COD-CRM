@@ -32,7 +32,7 @@ const navigation = [
     name: "dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
-    roles: ["ADMIN", "STAFF"],
+    roles: ["ADMIN"],
   },
   {
     name: "orders",

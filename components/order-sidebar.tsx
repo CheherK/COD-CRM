@@ -11,13 +11,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Save, List, Trash2, Package, Plus, AlertCircle, Truck, ExternalLink, Loader2, X } from "lucide-react"
+import { Save, List, Trash2, Package, Plus, AlertCircle, Truck, ExternalLink, Loader2, X, Notebook, NotebookPen } from "lucide-react"
 import type { OrderStatus } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 import { cn } from "@/lib/utils"
 import { DeliveryShipment, DeliveryStatusEnum } from "@/lib/delivery/types";
+import { useOrders } from "@/hooks/use-orders";
 
 interface OrderSidebarProps {
   open: boolean
@@ -72,6 +73,7 @@ interface OrderFormData {
   total: number
   deliveryPrice?: number
   notes?: string
+  deliveryNotes?: string
   attemptCount: number
   items: OrderItem[]
 }
@@ -93,6 +95,7 @@ const defaultOrderData: OrderFormData = {
   total: 0,
   deliveryPrice: 7,
   notes: "",
+  deliveryNotes: "",
   attemptCount: 0,
   items: []
 }
@@ -110,6 +113,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
   const [shipmentInfo, setShipmentInfo] = useState<any>(null)
   const [products, setProducts] = useState<Product[]>([])
   const [showCloseConfirmation, setShowCloseConfirmation] = useState(false)
+  const { updateOrder } = useOrders()
   const { toast } = useToast()
   const { user } = useAuth()
 
@@ -136,6 +140,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
         total: order.total,
         deliveryPrice: order.deliveryPrice || 7,
         notes: order.notes || "",
+        deliveryNotes: order.deliveryNotes || "",
         attemptCount: order.attemptCount || 0,
         items: order.items.map((item: any) => ({
           id: item.id,
@@ -543,10 +548,10 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
 
     // Check if there are any errors
     const hasErrors = Object.keys(errors).length > 0 || 
-                     !orderData.customerName.trim() || 
-                     !orderData.customerPhone1.trim() || 
-                     !orderData.customerAddress.trim() || 
-                     orderData.items.length === 0
+                    !orderData.customerName.trim() || 
+                    !orderData.customerPhone1.trim() || 
+                    !orderData.customerAddress.trim() || 
+                    orderData.items.length === 0
 
     if (hasErrors) {
       toast({
@@ -558,8 +563,9 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
     }
 
     setLoading(true)
+    
     try {
-      // Prepare API payload
+      // Prepare payload
       const payload = {
         customerName: orderData.customerName,
         customerPhone1: orderData.customerPhone1,
@@ -571,6 +577,7 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
         deliveryCompany: orderData.deliveryCompany || null,
         deliveryPrice: orderData.deliveryPrice || 0,
         notes: orderData.notes || null,
+        deliveryNotes: orderData.deliveryNotes || null,
         attemptCount: orderData.attemptCount,
         items: orderData.items.map(item => ({
           productId: item.productId,
@@ -579,47 +586,78 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
         }))
       }
 
-      // API call
-      const url = mode === "add" ? "/api/orders" : `/api/orders/${orderData.id}`
-      const method = mode === "add" ? "POST" : "PUT"
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        
-        toast({
-          title: t("success"),
-          description: mode === "add" ? t("orderCreatedSuccessfully") : t("orderUpdatedSuccessfully"),
+      if (mode === "add") {
+        const response = await fetch("/api/orders", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
         })
 
-        // Update original data to reflect saved state
-        setOriginalOrderData(orderData)
+        if (response.ok) {
+          const result = await response.json()
+          
+          toast({
+            title: t("success"),
+            description: t("orderCreatedSuccessfully"),
+          })
 
-        // If this is a new order and we have a delivery agency selected, create shipment
-        if (mode === "add" && selectedDeliveryAgency && result.order) {
-          setOrderData(prev => ({ ...prev, id: result.order.id }))
-          await createShipment()
+          // Update original data to reflect saved state
+          setOriginalOrderData(orderData)
+
+          // If we have a delivery agency selected, create shipment
+          if (selectedDeliveryAgency && result.order) {
+            setOrderData(prev => ({ ...prev, id: result.order.id }))
+            await createShipment()
+          }
+
+          onSave()
+        } else {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to create order")
         }
 
-        onSave()
       } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to save order")
+        const result = await updateOrder(orderData.id!!, payload, { 
+          optimistic: true // Enable optimistic updates for better UX
+        })
+
+        if (result.success) {
+          // Update original data to reflect saved state
+          setOriginalOrderData(orderData)
+          
+          // Log performance improvement
+          if (result.responseTime) {
+            console.log(`✅ Order update completed in ${result.responseTime}ms`)
+          }
+
+          // Handle shipment creation if delivery agency was added/changed
+          if (selectedDeliveryAgency && 
+              (payload.status === "UPLOADED" || 
+              payload.deliveryCompany !== originalOrderData.deliveryCompany)) {
+            await createShipment()
+          }
+
+          onSave()
+        } else {
+          // Error handling is already done in updateOrder method via toast
+          throw new Error(result.error || "Failed to update order")
+        }
       }
-    } catch (error) {
+
+    } catch (error: any) {
       console.error("Error saving order:", error)
-      toast({
-        title: t("error"),
-        description: `${t("failedToSaveOrder")}: ${error instanceof Error ? error.message : "Unknown error"}`,
-        variant: "destructive",
-      })
+      
+      // Only show toast for creation errors or unexpected errors
+      // Update errors are handled in updateOrder method
+      if (mode === "add" || !error?.message?.includes("Failed to update")) {
+        toast({
+          title: t("error"),
+          description: `${mode === "add" ? t("failedToCreateOrder") : t("failedToSaveOrder")}: ${error instanceof Error ? error.message : "Unknown error"}`,
+          variant: "destructive",
+        })
+      }
     } finally {
       setLoading(false)
     }
@@ -779,6 +817,18 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                         ✅ {t("orderAlreadyUploaded")}
                       </p>
                     )}
+
+                    {/* Private Note */}
+                    <Label htmlFor="deliveryAgency" className="flex items-center gap-2 my-2">
+                      <NotebookPen className="h-4 w-4" />
+                      {t("deliveryNotes")}
+                    </Label>
+                    <Textarea
+                      placeholder={t("addDeliveryNote")}
+                      value={orderData.deliveryNotes || ""}
+                      onChange={(e) => setOrderData(prev => ({ ...prev, deliveryNotes: e.target.value }))}
+                      className="min-h-[100px]"
+                    />
                   </div>
                 )}
 
@@ -812,17 +862,6 @@ export function OrderSidebar({ open, onClose, mode, order, onSave }: OrderSideba
                       <p>
                         <strong>{t("trackingNumber")}:</strong> {shipmentInfo.trackingNumber}
                       </p>
-                      {shipmentInfo.printUrl && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-2 bg-transparent"
-                          onClick={() => window.open(shipmentInfo.printUrl, "_blank")}
-                        >
-                          <ExternalLink className="h-3 w-3 mr-1" />
-                          {t("printLabel")}
-                        </Button>
-                      )}
                     </div>
                   </div>
                 )}

@@ -18,7 +18,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, user } = useAuth()
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,7 +33,11 @@ export default function LoginPage() {
 
       if (success) {
         console.log("✅ Login successful, redirecting to dashboard")
-        router.push("/dashboard")
+        if (user?.role === "ADMIN") {
+          router.push("/dashboard")
+        } else {
+          router.push("/dashboard/orders")
+        }
       } else {
         console.log("❌ Login failed")
         setError("Invalid username or password")
@@ -58,7 +62,11 @@ export default function LoginPage() {
 
       if (success) {
         console.log("✅ Demo login successful, redirecting to dashboard")
-        router.push("/dashboard")
+        if (user?.role === "ADMIN") {
+          router.push("/dashboard")
+        } else {
+          router.push("/dashboard/orders")
+        }
       } else {
         console.log("❌ Demo login failed")
         setError("Demo login failed. Please try again.")

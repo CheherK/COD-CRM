@@ -18,6 +18,8 @@ import {
 } from "lucide-react"
 import { ActivityFeed } from "@/components/activity-feed"
 import { useLanguage } from "@/contexts/language-context"
+import { useAuth } from '@/contexts/auth-context';
+import { useRouter } from 'next/navigation';
 
 interface DashboardStats {
   orders: {
@@ -89,9 +91,16 @@ export function DashboardClient() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([])
+  const { user: currentUser } = useAuth()
+  const router = useRouter()
 
   // Load data from localStorage on component mount
   useEffect(() => {
+    if (currentUser?.role !== 'ADMIN') {
+      router.push('/dashboard/orders')
+      return
+    }
+
     const savedStats = localStorage.getItem('dashboard-stats')
     const savedUser = localStorage.getItem('dashboard-user')
     const savedRecentOrders = localStorage.getItem('dashboard-recent-orders')

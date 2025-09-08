@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
         `${item.product.name} (x${item.quantity})`
       ).join(', '),
       price: Number(order.total),
-      notes: order.notes || undefined,
+      notes: order.deliveryNotes || undefined,
     };
 
     // Create shipment

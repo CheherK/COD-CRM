@@ -89,7 +89,7 @@ export class DeliveryService {
         await prisma.order.update({
           where: { id: orderId },
           data: {
-            // Order keeps its status (CONFIRMED) but we track delivery separately
+            status: 'UPLOADED',
             updatedAt: new Date(),
           },
         });

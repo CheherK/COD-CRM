@@ -506,6 +506,78 @@ const updateFilters = useCallback((newFilters: Partial<OrdersFilters>) => {
     }
   }, [filters, fetchOrders, toast, t])
 
+  const updateOrder = useCallback(async (orderId: string, updateData: any, options: { optimistic?: boolean } = {}) => {
+    const { optimistic = true } = options
+    
+    try {
+      // OPTIMIZATION: Optimistic UI updates
+      if (optimistic) {
+        setOrders(prevOrders => 
+          prevOrders.map(order => 
+            order.id === orderId 
+              ? { ...order, ...updateData, updatedAt: new Date().toISOString() }
+              : order
+          )
+        )
+      }
+
+      const startTime = Date.now()
+      
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      })
+
+      const data = await response.json()
+      const responseTime = Date.now() - startTime
+      
+      console.log(`Order update took ${responseTime}ms`)
+
+      if (!response.ok) {
+        // Revert optimistic update on error
+        if (optimistic) {
+          const useFullApi = !!filters.dateFrom || !!filters.dateTo
+          await fetchOrders(filters, { skipCache: true, useFullApi })
+        }
+        throw new Error(data.error || 'Failed to update order')
+      }
+
+      // OPTIMIZATION: Only refresh if not using optimistic updates
+      // or if the response indicates significant changes
+      if (!optimistic || data.performance?.itemsChanged || data.performance?.statusChanged) {
+        // Clear cache for this specific order
+        const cacheKey = getCacheKey(filters)
+        const cache = cacheRef.current[cacheKey]
+        if (cache?.fullOrders[orderId]) {
+          delete cache.fullOrders[orderId]
+        }
+
+        // Selective refresh - only if current view might be affected
+        const useFullApi = !!filters.dateFrom || !!filters.dateTo
+        await fetchOrders(filters, { skipCache: true, useFullApi })
+      }
+
+      toast({
+        title: t("success"),
+        description: t("orderUpdatedSuccessfully"),
+      })
+
+      return { success: true, responseTime }
+      
+    } catch (error) {
+      console.error('Failed to update order:', error)
+      toast({
+        title: t("error"),
+        description: error instanceof Error ? error.message : t("failedToUpdateOrder"),
+        variant: "destructive",
+      })
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  }, [filters, fetchOrders, getCacheKey, toast, t])
+
   // Delete single order
   const deleteOrder = useCallback(async (orderId: string) => {
     return performBulkAction({
@@ -630,6 +702,7 @@ const updateFilters = useCallback((newFilters: Partial<OrdersFilters>) => {
     deleteOrder,
     clearFilters,
     clearAdvancedFilters,
+    updateOrder,
 
     // Helpers
     getOrdersByStatus,

@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/auth-server"
 import prisma from "@/lib/prisma"
+import { OrderItem } from "@prisma/client";
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -158,6 +159,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     console.log("=== UPDATE ORDER API CALLED ===")
+    const startTime = Date.now()
 
     const token = request.cookies.get("auth-token")?.value
 
@@ -171,30 +173,53 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    const order = await prisma.order.findUnique({
+    const updateData = await request.json()
+    console.log("Updating order:", params.id)
+
+    // OPTIMIZATION 1: Single query to get current order with minimal data
+    const currentOrder = await prisma.order.findUnique({
       where: { id: params.id },
-      include: {
-        items: true
+      select: {
+        id: true,
+        status: true,
+        total: true,
+        deliveryPrice: true,
+        deliveryCompany: true,
+        customerName: true,
+        customerPhone1: true,
+        customerPhone2: true,
+        customerEmail: true,
+        customerAddress: true,
+        customerCity: true,
+        notes: true,
+        attemptCount: true,
+        confirmedById: true,
+        items: {
+          select: {
+            id: true,
+            productId: true,
+            quantity: true,
+            price: true
+          }
+        }
       }
     })
 
-    if (!order) {
+    if (!currentOrder) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    const updateData = await request.json()
-    console.log("Updating order:", order.id)
+    // OPTIMIZATION 2: Pre-calculate all changes before transaction
+    const oldStatus = currentOrder.status
+    const newStatus = updateData.status || currentOrder.status
+    const statusChanged = oldStatus !== newStatus
 
-    // Track what changed for status history
-    const oldStatus = order.status
-    const newStatus = updateData.status || order.status
-
-    // Handle attempt count for ATTEMPT statuses
-    let attemptCount = updateData.attemptCount
-
-    // Calculate new total if items are updated
-    let totalAmount = Number(order.total)
+    // Calculate new total efficiently
+    let totalAmount = Number(currentOrder.total)
+    let itemsChanged = false
+    
     if (updateData.items) {
+      itemsChanged = true
       const itemsTotal = updateData.items.reduce((sum: number, item: any) => 
         sum + (item.price * item.quantity), 0
       )
@@ -202,151 +227,216 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       totalAmount = itemsTotal + deliveryPrice
     }
 
-    // Update order in a transaction
+    // OPTIMIZATION 3: Prepare all transaction operations
+    const transactionOperations = []
+    
+    // Order update data
+    const orderUpdateData: any = {}
+    
+    // Only include fields that are actually changing
+    if (updateData.customerName !== undefined && updateData.customerName !== currentOrder.customerName) {
+      orderUpdateData.customerName = updateData.customerName
+    }
+    if (updateData.customerPhone1 !== undefined && updateData.customerPhone1 !== currentOrder.customerPhone1) {
+      orderUpdateData.customerPhone1 = updateData.customerPhone1
+    }
+    if (updateData.customerPhone2 !== undefined && updateData.customerPhone2 !== currentOrder.customerPhone2) {
+      orderUpdateData.customerPhone2 = updateData.customerPhone2
+    }
+    if (updateData.customerEmail !== undefined && updateData.customerEmail !== currentOrder.customerEmail) {
+      orderUpdateData.customerEmail = updateData.customerEmail
+    }
+    if (updateData.customerAddress !== undefined && updateData.customerAddress !== currentOrder.customerAddress) {
+      orderUpdateData.customerAddress = updateData.customerAddress
+    }
+    if (updateData.customerCity !== undefined && updateData.customerCity !== currentOrder.customerCity) {
+      orderUpdateData.customerCity = updateData.customerCity
+    }
+    if (statusChanged) {
+      orderUpdateData.status = newStatus
+    }
+    if (updateData.deliveryCompany !== undefined && updateData.deliveryCompany !== currentOrder.deliveryCompany) {
+      orderUpdateData.deliveryCompany = updateData.deliveryCompany
+    }
+    if (totalAmount !== Number(currentOrder.total)) {
+      orderUpdateData.total = totalAmount
+    }
+    if (updateData.deliveryPrice !== undefined) {
+      orderUpdateData.deliveryPrice = updateData.deliveryPrice > 0 ? updateData.deliveryPrice : null
+    }
+    if (updateData.notes !== undefined && updateData.notes !== currentOrder.notes) {
+      orderUpdateData.notes = updateData.notes
+    }
+    if (updateData.attemptCount !== undefined && updateData.attemptCount !== currentOrder.attemptCount) {
+      orderUpdateData.attemptCount = updateData.attemptCount
+    }
+    if (updateData.confirmedByID !== undefined && updateData.confirmedByID !== currentOrder.confirmedById) {
+      orderUpdateData.confirmedById = updateData.confirmedByID
+    }
+
+    // Always update updatedAt
+    orderUpdateData.updatedAt = new Date()
+
+    // OPTIMIZATION 4: Optimized transaction with minimal operations
     const updatedOrder = await prisma.$transaction(async (tx) => {
-      // Update the order
-      const updated = await tx.order.update({
-        where: { id: params.id },
-        data: {
-          customerName: updateData.customerName || order.customerName,
-          customerPhone1: updateData.customerPhone1 || order.customerPhone1,
-          customerPhone2: updateData.customerPhone2 !== undefined ? updateData.customerPhone2 : order.customerPhone2,
-          customerEmail: updateData.customerEmail !== undefined ? updateData.customerEmail : order.customerEmail,
-          customerAddress: updateData.customerAddress || order.customerAddress,
-          customerCity: updateData.customerCity || order.customerCity,
-          status: newStatus,
-          deliveryCompany: updateData.deliveryCompany !== undefined ? updateData.deliveryCompany : order.deliveryCompany,
-          total: totalAmount,
-          deliveryPrice: updateData.deliveryPrice !== undefined 
-            ? (updateData.deliveryPrice > 0 ? updateData.deliveryPrice : null)
-            : order.deliveryPrice,
-          notes: updateData.notes !== undefined ? updateData.notes : order.notes,
-          attemptCount: attemptCount,
-          confirmedById: updateData.confirmedByID || order.confirmedById
-        }
-      })
+      const operations = []
 
-      // Update items if provided
-      if (updateData.items) {
-        // Delete existing items
-        await tx.orderItem.deleteMany({
-          where: { orderId: params.id }
-        })
-
-        // Create new items
-        for (const item of updateData.items) {
-          await tx.orderItem.create({
-            data: {
-              orderId: params.id,
-              productId: item.productId,
-              quantity: item.quantity,
-              price: item.price
-            }
+      // 1. Update order only if there are changes
+      if (Object.keys(orderUpdateData).length > 1) { // > 1 because updatedAt is always included
+        operations.push(
+          tx.order.update({
+            where: { id: params.id },
+            data: orderUpdateData,
+            select: { id: true, status: true, updatedAt: true } // Minimal select
           })
+        )
+      }
+
+      // 2. Handle items update more efficiently
+      if (itemsChanged && updateData.items) {
+        // OPTIMIZATION: Instead of delete all + recreate, do a smart diff
+        const currentItemsMap = new Map(
+          currentOrder.items.map(item => [`${item.productId}`, item])
+        )
+        const newItemsMap = new Map<string, OrderItem>(
+          updateData.items.map((item: OrderItem) => [`${item.productId}`, item])
+        )
+
+        // Find items to delete, update, and create
+        const toDelete: string[] = []
+        const toUpdate: any[] = []
+        const toCreate: any[] = []
+
+        // Check existing items
+        for (const [productId, currentItem] of currentItemsMap) {
+          const newItem = newItemsMap.get(productId)
+          if (!newItem) {
+            toDelete.push(currentItem.id)
+          } else if (
+            currentItem.quantity !== newItem.quantity || 
+            currentItem.price.toString() !== newItem.price.toString()
+          ) {
+            toUpdate.push({
+              id: currentItem.id,
+              quantity: newItem.quantity,
+              price: newItem.price
+            })
+          }
+        }
+
+        // Check for new items
+        for (const [productId, newItem] of newItemsMap) {
+          if (!currentItemsMap.has(productId)) {
+            toCreate.push({
+              orderId: params.id,
+              productId: newItem.productId,
+              quantity: newItem.quantity,
+              price: newItem.price
+            })
+          }
+        }
+
+        // Execute item operations
+        if (toDelete.length > 0) {
+          operations.push(
+            tx.orderItem.deleteMany({
+              where: { id: { in: toDelete } }
+            })
+          )
+        }
+
+        // Batch updates
+        for (const item of toUpdate) {
+          operations.push(
+            tx.orderItem.update({
+              where: { id: item.id },
+              data: {
+                quantity: item.quantity,
+                price: item.price
+              }
+            })
+          )
+        }
+
+        // Batch creates
+        if (toCreate.length > 0) {
+          operations.push(
+            tx.orderItem.createMany({
+              data: toCreate
+            })
+          )
         }
       }
 
-      // Add status history if status changed or if there's a status note
-      if (oldStatus !== newStatus || updateData.statusNote) {
+      // 3. Add status history only if needed
+      if (statusChanged || updateData.statusNote) {
         const statusNote = updateData.statusNote || `Status changed from ${oldStatus} to ${newStatus}`
-        
-        await tx.orderStatusHistory.create({
-          data: {
-            orderId: params.id,
-            status: newStatus,
-            notes: statusNote,
-            userId: user.id
-          }
-        })
-      }
-
-      // Create shipment if status changed to UPLOADED and delivery company is selected
-      if (oldStatus !== newStatus && 
-          newStatus === "UPLOADED" && 
-          updateData.deliveryCompany) {
-        try {
-          // This would integrate with delivery service
-          console.log(`Creating shipment for order ${params.id} with ${updateData.deliveryCompany}`)
-          
-          // For now, we'll just add a note in status history
-          await tx.orderStatusHistory.create({
+        operations.push(
+          tx.orderStatusHistory.create({
             data: {
               orderId: params.id,
               status: newStatus,
-              notes: `Shipment created with ${updateData.deliveryCompany}`,
+              notes: statusNote,
               userId: user.id
-            }
+            },
+            select: { id: true } // Minimal select
           })
-        } catch (error) {
-          console.error("Failed to create shipment:", error)
-          // Don't fail the whole transaction
-        }
+        )
       }
 
-      // Log activity
-      await tx.activity.create({
-        data: {
-          type: "ORDER_UPDATED",
-          description: `Order ${params.id} updated by ${user.username}`,
-          userId: user.id,
-          metadata: {
-            orderId: params.id,
-            changes: updateData,
-            oldStatus: oldStatus,
-            newStatus: newStatus
-          },
-          ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1",
-          userAgent: request.headers.get("user-agent") || "unknown"
-        }
-      })
-
-      return updated
-    })
-
-    // Fetch complete updated order
-    const completeOrder = await prisma.order.findUnique({
-      where: { id: params.id },
-      include: {
-        items: {
-          include: {
-            product: true
-          }
-        },
-        confirmedBy: {
-          select: {
-            id: true,
-            username: true,
-            firstName: true,
-            lastName: true
-          }
-        },
-        statusHistory: {
-          orderBy: {
-            createdAt: 'desc'
-          },
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                firstName: true,
-                lastName: true
-              }
-            }
-          }
-        }
+      // 4. Handle shipment creation for UPLOADED status
+      if (statusChanged && 
+          newStatus === "UPLOADED" && 
+          updateData.deliveryCompany) {
+        // Add shipment creation logic here if needed
+        // For now, just log it
+        console.log(`Creating shipment for order ${params.id} with ${updateData.deliveryCompany}`)
       }
+
+      // 5. Log activity efficiently
+      operations.push(
+        tx.activity.create({
+          data: {
+            type: "ORDER_UPDATED",
+            description: `Order ${params.id} updated`,
+            userId: user.id,
+            metadata: {
+              orderId: params.id,
+              hasStatusChange: statusChanged,
+              hasItemsChange: itemsChanged,
+              newStatus: statusChanged ? newStatus : undefined
+            },
+            ipAddress: request.headers.get("x-forwarded-for") || "127.0.0.1",
+            userAgent: request.headers.get("user-agent") || "unknown"
+          },
+          select: { id: true } // Minimal select
+        })
+      )
+
+      // Execute all operations
+      await Promise.all(operations)
+
+      return { success: true }
     })
 
-    console.log("✅ Order updated:", updatedOrder.id)
+    // OPTIMIZATION 5: Return minimal response - avoid fetching complete order
+    const queryTime = Date.now() - startTime
+    console.log(`✅ Order updated: ${params.id} in ${queryTime}ms`)
 
     return NextResponse.json({
       success: true,
-      order: completeOrder,
-      message: "Order updated successfully"
+      message: "Order updated successfully",
+      orderId: params.id,
+      performance: {
+        queryTime,
+        itemsChanged,
+        statusChanged
+      }
     })
+
   } catch (error) {
-    console.error("❌ Update order API error:", error)
+    const queryTime = Date.now() - Date.now()
+    console.error(`❌ Update order API error (${queryTime}ms):`, error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

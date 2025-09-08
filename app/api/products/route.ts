@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
 
     console.log("✅ Retrieved", formattedProducts.length, "products");
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       products: formattedProducts,
       pagination: {
@@ -106,6 +106,10 @@ export async function GET(request: NextRequest) {
         pages: Math.ceil(totalCount / limit),
       },
     });
+
+    // Cache for 5 minutes
+    // response.headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+    return response;
   } catch (error) {
     console.error("❌ Get products API error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

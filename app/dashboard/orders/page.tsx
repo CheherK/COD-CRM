@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Search, Plus, Eye, Edit, Trash2, Filter, CalendarIcon, Package, Download, ChevronDown, X, Phone, Loader2 } from "lucide-react"
 import { format } from "date-fns"
-import type { OrderStatus } from "@/lib/types"
+import type { OrderStatus, Product } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 import { OrderSidebar } from "@/components/order-sidebar"
 import { OrderViewDialog } from "@/components/order-view-dialog"
@@ -77,13 +77,6 @@ interface OrderData {
   totalItems: number
   firstProduct: any
   hasMultipleProducts: boolean
-}
-
-interface Product {
-  id: string
-  name: string
-  nameEn: string
-  nameFr: string
 }
 
 interface DeliveryAgency {
@@ -621,7 +614,20 @@ export default function OrdersPage() {
                                 <SelectItem value="__all__">{t("allProducts")}</SelectItem>
                                 {products.map((product) => (
                                   <SelectItem key={product.id} value={product.name}>
-                                    {product.name}
+                                    <div className="flex items-center justify-center">
+                                      <div className="w-6 h-6 bg-purple-600 rounded flex items-center justify-center mr-1">
+                                        {product.imageUrl ? (
+                                          <img
+                                            src={product.imageUrl}
+                                            alt={product.name}
+                                            className="w-6 h-6 rounded object-cover"
+                                          />
+                                        ) : (
+                                          <Package className="h-3 w-3 text-white" />
+                                        )}
+                                      </div>
+                                      {product.name}
+                                    </div>
                                   </SelectItem>
                                 ))}
                               </SelectContent>

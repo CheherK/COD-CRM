@@ -153,7 +153,7 @@ function DeliveryManagementContent() {
         </div>
       </div>
 
-      <Tabs defaultValue="agencies" className="space-y-6">
+      <Tabs defaultValue="shipments" className="space-y-6">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="shipments" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />

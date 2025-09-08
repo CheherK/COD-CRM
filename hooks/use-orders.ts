@@ -611,6 +611,41 @@ const updateFilters = useCallback((newFilters: Partial<OrdersFilters>) => {
     fetchOrders(clearedFilters, { skipCache: true })
   }, [filters, fetchOrders])
 
+  // Method to handle delivery status updates in the orders hook
+  const updateOrderFromDeliveryStatus = useCallback(async (orderId: string, deliveryStatus: 'UPLOADED' | 'DEPOSIT' | 'IN_TRANSIT' | 'DELIVERED' | 'RETURNED') => {
+    try {
+      // Optimistic update
+      setOrders(prevOrders => 
+        prevOrders.map(order => 
+          order.id === orderId 
+            ? { ...order, status: deliveryStatus, updatedAt: new Date().toISOString() }
+            : order
+        )
+      )
+
+      // Note: This is automatically handled by the delivery service now
+      // But we can still refresh to ensure consistency
+      const useFullApi = !!filters.dateFrom || !!filters.dateTo
+      await fetchOrders(filters, { skipCache: true, useFullApi })
+
+      toast({
+        title: t("success"),
+        description: `Order ${orderId} status updated to ${deliveryStatus} via delivery tracking`,
+      })
+
+      return { success: true }
+
+    } catch (error) {
+      console.error('Failed to update order from delivery status:', error)
+      
+      // Revert optimistic update
+      const useFullApi = !!filters.dateFrom || !!filters.dateTo
+      await fetchOrders(filters, { skipCache: true, useFullApi })
+      
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  }, [filters, fetchOrders, toast, t])
+
 
   // Helper functions
   const getOrdersByStatus = useCallback((status?: OrderStatus) => {
@@ -703,6 +738,7 @@ const updateFilters = useCallback((newFilters: Partial<OrdersFilters>) => {
     clearFilters,
     clearAdvancedFilters,
     updateOrder,
+    updateOrderFromDeliveryStatus,
 
     // Helpers
     getOrdersByStatus,

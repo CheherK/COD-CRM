@@ -127,6 +127,9 @@ export class DeliveryService {
     try {
       const shipment = await prisma.deliveryShipment.findUnique({
         where: { id: shipmentId },
+        include: {
+          order: true // Include order to update its status
+        }
       });
 
       if (!shipment) {
@@ -143,31 +146,53 @@ export class DeliveryService {
       const result = await agency.trackOrder(shipment.trackingNumber, config.credentials);
 
       if (result.success && result.status) {
-        // Update shipment if status changed
-        if (result.status.status !== shipment.status) {
+        const newDeliveryStatus = result.status.status;
+        const statusChanged = newDeliveryStatus !== shipment.status;
+
+        if (statusChanged) {
+          // Update shipment status
           await prisma.deliveryShipment.update({
             where: { id: shipmentId },
             data: {
-              status: result.status.status,
+              status: newDeliveryStatus,
               lastStatusUpdate: new Date(),
             },
           });
 
-          // Log status change
+          // Log shipment status change
           await prisma.deliveryStatusLog.create({
             data: {
               shipmentId,
-              status: result.status.status,
+              status: newDeliveryStatus,
               message: result.status.message,
               timestamp: new Date(),
               source: 'api',
             },
           });
 
-          console.log(`📝 Status updated: ${shipment.status} → ${result.status.status}`);
+          // **NEW: Update Order Status to match Delivery Status**
+          // Map delivery statuses to order statuses (they are the same in your schema)
+          const orderStatus = newDeliveryStatus; // Direct mapping since statuses match
 
-          // If delivered or returned, we could optionally update order status
-          // but typically orders stay CONFIRMED while delivery status changes
+          await prisma.order.update({
+            where: { id: shipment.orderId },
+            data: {
+              status: orderStatus,
+              updatedAt: new Date(),
+            },
+          });
+
+          // Log order status change
+          await prisma.orderStatusHistory.create({
+            data: {
+              orderId: shipment.orderId,
+              status: orderStatus,
+              notes: `Status updated from delivery tracking: ${result.status.message}`,
+            },
+          });
+
+          console.log(`📝 Shipment status updated: ${shipment.status} → ${newDeliveryStatus}`);
+          console.log(`📝 Order status updated: ${shipment.order.status} → ${orderStatus}`);
         }
       }
 
@@ -283,6 +308,18 @@ export class DeliveryService {
 
     for (const shipmentId of shipmentIds) {
       try {
+        // Get shipment with order info
+        const shipment = await prisma.deliveryShipment.findUnique({
+          where: { id: shipmentId },
+          include: { order: true }
+        });
+
+        if (!shipment) {
+          errors.push(`${shipmentId}: Shipment not found`);
+          continue;
+        }
+
+        // Update shipment status
         await prisma.deliveryShipment.update({
           where: { id: shipmentId },
           data: {
@@ -291,7 +328,7 @@ export class DeliveryService {
           },
         });
 
-        // Log status change
+        // Log shipment status change
         await prisma.deliveryStatusLog.create({
           data: {
             shipmentId,
@@ -302,7 +339,28 @@ export class DeliveryService {
           },
         });
 
+        // **NEW: Update Order Status to match Delivery Status**
+        await prisma.order.update({
+          where: { id: shipment.orderId },
+          data: {
+            status: newStatus, // Direct mapping since statuses match
+            updatedAt: new Date(),
+          },
+        });
+
+        // Log order status change
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: shipment.orderId,
+            status: newStatus,
+            notes: `Status updated via bulk shipment update to ${newStatus}`,
+            userId: userId,
+          },
+        });
+
         updated++;
+        console.log(`📝 Updated shipment ${shipmentId} and order ${shipment.orderId} to ${newStatus}`);
+
       } catch (error) {
         errors.push(`${shipmentId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
@@ -312,7 +370,7 @@ export class DeliveryService {
     if (userId) {
       await logOrderActivity(
         'SHIPMENTS_BULK_UPDATED',
-        `Bulk updated ${updated} shipments to ${newStatus}`,
+        `Bulk updated ${updated} shipments and orders to ${newStatus}`,
         request,
         userId,
         undefined,

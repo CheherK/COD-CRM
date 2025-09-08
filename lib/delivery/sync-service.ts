@@ -22,7 +22,7 @@ export class DeliverySyncService {
       throw new Error('Sync already in progress')
     }
 
-    console.log('🔄 Starting shipment sync...')
+    console.log('🔄 Starting shipment sync with order status updates...')
 
     const startTime = Date.now()
     this.isRunning = true
@@ -43,6 +43,9 @@ export class DeliverySyncService {
             in: ['UPLOADED', 'DEPOSIT', 'IN_TRANSIT'], // Only sync active statuses
           },
         },
+        include: {
+          order: true // Include order for status comparison
+        },
         orderBy: {
           lastStatusUpdate: 'asc', // Sync oldest first
         }
@@ -53,15 +56,18 @@ export class DeliverySyncService {
 
       for (const shipment of activeShipments) {
         try {
-          const oldStatus = shipment.status
+          const oldShipmentStatus = shipment.status
+          const oldOrderStatus = shipment.order.status
+          
+          // Track the shipment (this will update both shipment and order status)
           const trackingResult = await deliveryService.trackShipment(shipment.id)
 
           if (trackingResult.success && trackingResult.status) {
-            const newStatus = trackingResult.status.status
+            const newShipmentStatus = trackingResult.status.status
 
-            if (oldStatus !== newStatus) {
+            if (oldShipmentStatus !== newShipmentStatus) {
               result.updated++
-              console.log(`📝 ${shipment.trackingNumber}: ${oldStatus} → ${newStatus}`)
+              console.log(`📝 ${shipment.trackingNumber}: Shipment ${oldShipmentStatus} → ${newShipmentStatus}, Order ${oldOrderStatus} → ${newShipmentStatus}`)
             }
           } else {
             result.errors++
@@ -73,7 +79,7 @@ export class DeliverySyncService {
           console.error(`❌ Error syncing ${shipment.trackingNumber}:`, error)
         }
 
-        // Rate limiting - 500ms between requests
+        // Rate limiting - 1 second between requests to avoid overwhelming APIs
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
 
@@ -90,10 +96,33 @@ export class DeliverySyncService {
     }
   }
 
-  public async syncSingleShipment(shipmentId: string): Promise<{ success: boolean; error?: string }> {
+  public async syncSingleShipment(shipmentId: string): Promise<{ success: boolean; error?: string; statusChanged?: boolean }> {
     try {
+      // Get current shipment and order status
+      const shipment = await prisma.deliveryShipment.findUnique({
+        where: { id: shipmentId },
+        include: { order: true }
+      })
+
+      if (!shipment) {
+        return { success: false, error: 'Shipment not found' }
+      }
+
+      const oldStatus = shipment.status
       const result = await deliveryService.trackShipment(shipmentId)
-      return { success: result.success, error: result.error }
+      
+      if (result.success && result.status) {
+        const statusChanged = oldStatus !== result.status.status
+        console.log(`📝 Single sync ${shipment.trackingNumber}: ${statusChanged ? `${oldStatus} → ${result.status.status}` : 'No change'}`)
+        
+        return { 
+          success: true, 
+          statusChanged,
+          error: undefined
+        }
+      } else {
+        return { success: false, error: result.error }
+      }
     } catch (error) {
       return {
         success: false,
@@ -109,7 +138,7 @@ export class DeliverySyncService {
       throw new Error('Sync already in progress')
     }
 
-    console.log(`🔄 Starting sync for ${status} shipments...`)
+    console.log(`🔄 Starting sync for ${status} shipments with order updates...`)
 
     const startTime = Date.now()
     this.isRunning = true
@@ -124,6 +153,7 @@ export class DeliverySyncService {
     try {
       const shipments = await prisma.deliveryShipment.findMany({
         where: { status },
+        include: { order: true },
         orderBy: { lastStatusUpdate: 'asc' }
       })
 
@@ -132,15 +162,17 @@ export class DeliverySyncService {
 
       for (const shipment of shipments) {
         try {
-          const oldStatus = shipment.status
+          const oldShipmentStatus = shipment.status
+          const oldOrderStatus = shipment.order.status
+          
           const trackingResult = await deliveryService.trackShipment(shipment.id)
 
           if (trackingResult.success && trackingResult.status) {
             const newStatus = trackingResult.status.status
 
-            if (oldStatus !== newStatus) {
+            if (oldShipmentStatus !== newStatus) {
               result.updated++
-              console.log(`📝 ${shipment.trackingNumber}: ${oldStatus} → ${newStatus}`)
+              console.log(`📝 ${shipment.trackingNumber}: Shipment ${oldShipmentStatus} → ${newStatus}, Order ${oldOrderStatus} → ${newStatus}`)
             }
           } else {
             result.errors++
@@ -187,10 +219,121 @@ export class DeliverySyncService {
           lt: cutoffTime
         }
       },
+      include: {
+        order: {
+          select: {
+            id: true,
+            status: true,
+            customerName: true
+          }
+        }
+      },
       orderBy: {
         lastStatusUpdate: 'asc'
       }
     })
+  }
+
+  // New method to sync and return detailed results
+  public async syncWithDetails(): Promise<{
+    result: SyncResult
+    shipmentUpdates: Array<{
+      trackingNumber: string
+      orderId: string
+      oldShipmentStatus: string
+      newShipmentStatus: string
+      oldOrderStatus: string
+      newOrderStatus: string
+    }>
+  }> {
+    const shipmentUpdates: Array<{
+      trackingNumber: string
+      orderId: string
+      oldShipmentStatus: string
+      newShipmentStatus: string
+      oldOrderStatus: string
+      newOrderStatus: string
+    }> = []
+
+    if (this.isRunning) {
+      throw new Error('Sync already in progress')
+    }
+
+    console.log('🔄 Starting detailed sync...')
+
+    const startTime = Date.now()
+    this.isRunning = true
+    this.lastSync = new Date()
+
+    const result: SyncResult = {
+      processed: 0,
+      updated: 0,
+      errors: 0,
+      duration: 0,
+    }
+
+    try {
+      const activeShipments = await prisma.deliveryShipment.findMany({
+        where: {
+          status: {
+            in: ['UPLOADED', 'DEPOSIT', 'IN_TRANSIT'],
+          },
+        },
+        include: {
+          order: true
+        },
+        orderBy: {
+          lastStatusUpdate: 'asc',
+        }
+      })
+
+      result.processed = activeShipments.length
+
+      for (const shipment of activeShipments) {
+        try {
+          const oldShipmentStatus = shipment.status
+          const oldOrderStatus = shipment.order.status
+          
+          const trackingResult = await deliveryService.trackShipment(shipment.id)
+
+          if (trackingResult.success && trackingResult.status) {
+            const newShipmentStatus = trackingResult.status.status
+
+            if (oldShipmentStatus !== newShipmentStatus) {
+              result.updated++
+              
+              // Record the update details
+              shipmentUpdates.push({
+                trackingNumber: shipment.trackingNumber,
+                orderId: shipment.orderId,
+                oldShipmentStatus,
+                newShipmentStatus,
+                oldOrderStatus,
+                newOrderStatus: newShipmentStatus // Order status matches delivery status
+              })
+            }
+          } else {
+            result.errors++
+          }
+
+        } catch (error) {
+          result.errors++
+          console.error(`❌ Error syncing ${shipment.trackingNumber}:`, error)
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+
+      result.duration = Date.now() - startTime
+      return { result, shipmentUpdates }
+      
+    } catch (error) {
+      result.duration = Date.now() - startTime
+      console.error('❌ Detailed sync failed:', error)
+      throw error
+    } finally {
+      this.isRunning = false
+    }
   }
 }
 
